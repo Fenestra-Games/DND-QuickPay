@@ -1,0 +1,20 @@
+{
+  "id": "dnd-quickpay",
+  "title": "DND QuickPay",
+  "description": "Send coins between players, GMs, actors, and containers, with escrow, change-making, and ledgers.",
+  "version": "0.1.0",
+  "compatibility": {
+    "minimum": "14.367",
+    "verified": "14.367"
+  },
+  "relationships": {
+    "requires": [
+      { "id": "socketlib", "type": "module" }
+    ],
+    "systems": [
+      { "id": "dnd5e", "type": "system" }
+    ]
+  },
+  "esmodules": ["scripts/main.mjs"],
+  "languages": []
+}
