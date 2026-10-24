@@ -111,11 +111,18 @@ const NPC = makeActor("NPC", []);
 const jar = makeContainer(NPC, "jar", { "dnd-quickpay.publicRecipient": true });
 const secret = makeContainer(NPC, "secret");
 
-// socketlib: runs the handler "on the GM client" and passes the caller's id as the real one does
+// socketlib: runs the handler "on the GM client" and passes the caller's id as the real one does.
+// Like the real library, it refuses modules whose module.json lacks "socket": true.
+import { readFileSync } from "node:fs";
+const manifest = JSON.parse(readFileSync(new URL("../module.json", import.meta.url), "utf8"));
 const handlers = {};
 globalThis.socketlib = {
   registerModule: (id) => {
     assert.equal(id, "dnd-quickpay");
+    if (!manifest.socket) {
+      console.error(`socketlib stand-in: ${id} has no "socket": true in module.json, returning undefined`);
+      return undefined;
+    }
     return {
       register: (name, fn) => { handlers[name] = fn; },
       executeAsGM: async (name, ...args) => handlers[name].apply({ socketdata: { userId: game.userId } }, args),

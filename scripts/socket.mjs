@@ -1,6 +1,7 @@
 import { MODULE_ID, DEFAULT_OFFLINE_MESSAGE } from "./constants.mjs";
 
 let socket = null;
+let socketFailed = false;
 
 /**
  * Players can't write to other people's actors, so every transfer runs on the GM's
@@ -10,7 +11,14 @@ let socket = null;
  */
 export function initSocket(getEngine) {
   Hooks.once("socketlib.ready", () => {
-    socket = socketlib.registerModule(MODULE_ID);
+    // socketlib returns undefined (and logs an error) if the module is inactive or its
+    // module.json is missing "socket": true
+    socket = socketlib.registerModule(MODULE_ID) ?? null;
+    if (!socket) {
+      socketFailed = true;
+      console.error(`${MODULE_ID} | socketlib refused to register this module. Check that module.json has "socket": true and the module is enabled.`);
+      return;
+    }
 
     const handle = (name) =>
       async function (...args) {
@@ -37,7 +45,14 @@ export function offlineText() {
 
 /** Call the engine on the GM's client. Resolves to the engine's result object. */
 export async function callGM(name, ...args) {
-  if (!socket) return { ok: false, error: "socketlib isn't ready yet." };
+  if (!socket) {
+    return {
+      ok: false,
+      error: socketFailed
+        ? "DND QuickPay couldn't connect to socketlib. Check the console for errors."
+        : "socketlib isn't ready yet.",
+    };
+  }
   if (!game.users.activeGM) {
     const text = offlineText();
     ui.notifications.warn(text);
