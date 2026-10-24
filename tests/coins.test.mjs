@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { planPayment, applyDelta, toUnits, invertDelta } from "../scripts/core/coins.mjs";
+import { planPayment, applyDelta, toUnits, invertDelta, normalizeAmount } from "../scripts/core/coins.mjs";
 
 const D = [
   { key: "pp", value: 1000, abbreviation: "pp" },
@@ -63,6 +63,24 @@ t("filtered denominations are fully ignored", () => {
 t("electrum can be requested and spent when enabled", () => {
   const r = planPayment(bal({ ep: 2 }), { ep: 1 }, D);
   assert.deepEqual(r.delta, { ep: -1 });
+});
+
+t("normalizeAmount accepts clean input and drops zeros", () => {
+  const r = normalizeAmount({ gp: 2, sp: 0 }, D);
+  assert.equal(r.ok, true);
+  assert.deepEqual(r.receive, { gp: 2 });
+  assert.equal(r.cost, 200);
+});
+
+t("normalizeAmount rejects anything dodgy", () => {
+  for (const bad of [
+    null, undefined, [], "gp", 5, {}, { gp: 0 }, { gp: -1 }, { gp: 1.5 }, { gp: "2" }, { gp: NaN },
+    { gp: Infinity }, { gp: 1e20 }, { gp: null }, { gp: true }, { xx: 1 }, { ep: 1 },
+    JSON.parse('{"__proto__": 1}'), JSON.parse('{"constructor": 1}'),
+  ]) {
+    const denoms = bad && bad.ep ? noEp : D;
+    assert.equal(normalizeAmount(bad, denoms).ok, false, JSON.stringify(bad));
+  }
 });
 
 t("escrow refund restores the exact balance", () => {

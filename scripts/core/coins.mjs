@@ -17,6 +17,34 @@ export function toUnits(amount, denoms) {
   return total;
 }
 
+/**
+ * Validate an amount that came from outside (a dialog, a macro, or a player's
+ * client over a socket) and return a clean copy.
+ * Accepts only own keys that are enabled denominations, with whole numbers
+ * greater than zero. Zero is skipped. Anything else is rejected.
+ * @returns {{ok:false, reason:string} | {ok:true, receive:object, cost:number}}
+ */
+export function normalizeAmount(amount, denoms) {
+  if (amount === null || typeof amount !== "object" || Array.isArray(amount)) {
+    return fail("Invalid amount.");
+  }
+  const known = new Set(denoms.map((d) => d.key));
+  const receive = {};
+  for (const k of Object.keys(amount)) {
+    const n = amount[k];
+    if (n === 0) continue;
+    if (!known.has(k)) return fail(`The denomination "${k}" is not available.`);
+    if (typeof n !== "number" || !Number.isSafeInteger(n) || n < 0) {
+      return fail("Amounts must be whole, positive numbers.");
+    }
+    receive[k] = n;
+  }
+  const cost = toUnits(receive, denoms);
+  if (!Number.isSafeInteger(cost)) return fail("That amount is too large.");
+  if (cost <= 0) return fail("The amount must be greater than zero.");
+  return { ok: true, receive, cost };
+}
+
 /** Human readable amount, largest coin first. e.g. "2 gp, 15 sp" */
 export function formatAmount(amount, denoms) {
   const parts = [];
@@ -62,18 +90,9 @@ export function applyDelta(balance, delta) {
  *   `receive` is exactly what the recipient gets.
  */
 export function planPayment(balance, amount, denoms) {
-  const byKey = Object.fromEntries(denoms.map((d) => [d.key, d]));
-
-  const receive = {};
-  for (const [k, n] of Object.entries(amount)) {
-    if (!n) continue;
-    if (!byKey[k]) return fail(`The denomination "${k}" is not available.`);
-    if (!Number.isInteger(n) || n < 0) return fail("Amounts must be whole, positive numbers.");
-    receive[k] = n;
-  }
-
-  const cost = toUnits(receive, denoms);
-  if (cost <= 0) return fail("The amount must be greater than zero.");
+  const norm = normalizeAmount(amount, denoms);
+  if (!norm.ok) return norm;
+  const { receive, cost } = norm;
 
   const bal = {};
   for (const d of denoms) bal[d.key] = Math.max(0, Math.floor(balance[d.key] ?? 0));
