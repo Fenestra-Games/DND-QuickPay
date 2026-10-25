@@ -18,7 +18,7 @@ class FakeCollection {
   get size() { return this.contents.length; }
   push(x) { this.contents.push(x); }
 }
-globalThis.game = { users: { contents: [gm, ana, ben] }, user: ana, actors: new FakeCollection(), items: new FakeCollection() };
+globalThis.game = { settings: { get: () => ({}) }, users: { contents: [gm, ana, ben] }, user: ana, actors: new FakeCollection(), items: new FakeCollection() };
 
 const mkActor = (id, type, owners, tokenVisible = null) => {
   const a = {
@@ -102,14 +102,14 @@ await t("sheet header: owners get Send and Ledgers, GMs also get Receive, others
     for (const fn of hooks.getHeaderControlsApplicationV2) fn({ document: actor }, controls);
     return controls.map((c) => c.action);
   };
-  assert.deepEqual(run(ana, A), ["quickpay-send", "quickpay-containers", "quickpay-ledgers"]);
-  assert.deepEqual(run(gm, A), ["quickpay-send", "quickpay-receive", "quickpay-containers", "quickpay-ledgers"]);
+  assert.deepEqual(run(ana, A), ["quickpay-send", "quickpay-containers", "quickpay-options", "quickpay-ledgers"]);
+  assert.deepEqual(run(gm, A), ["quickpay-send", "quickpay-receive", "quickpay-containers", "quickpay-options", "quickpay-ledgers"]);
   assert.deepEqual(run(ana, B), [], "not your character");
   assert.deepEqual(run(ana, null), []);
   game.user = ana;
   const controls = [];
   for (const fn of hooks.getHeaderControlsApplicationV2) { fn({ document: A }, controls); fn({ document: A }, controls); }
-  assert.equal(controls.length, 3, "no duplicates when the hook runs twice");
+  assert.equal(controls.length, 4, "no duplicates when the hook runs twice");
   assert.ok(controls.every((c) => typeof c.onClick === "function"));
 });
 
@@ -185,7 +185,7 @@ await t("scene controls: only a GM gets the QuickPay group, with every tool as a
   const c = run(gm);
   assert.ok(c.quickpay);
   const tools = Object.values(c.quickpay.tools);
-  assert.deepEqual(tools.map((x) => x.name), ["qp-send", "qp-receive", "qp-ledgers", "qp-containers", "qp-personal", "qp-creators"]);
+  assert.deepEqual(tools.map((x) => x.name), ["qp-send", "qp-receive", "qp-ledgers", "qp-containers", "qp-options", "qp-personal", "qp-creators"]);
   assert.ok(tools.every((x) => x.button === true && typeof x.onChange === "function" && x.icon.includes("quickpay-gold")));
   assert.ok(c.quickpay.icon.includes("quickpay-gold"));
   assert.ok(Object.keys(c.quickpay.tools).includes(c.quickpay.activeTool));
@@ -216,6 +216,18 @@ await t("picking: hit-testing finds the topmost token, including its edges, and 
 });
 
 const { flaggableContainers } = await import("../scripts/ui/public-containers.mjs");
+
+await t("when only the GM may flag containers, players get none and no menu entry", () => {
+  const real = game.settings.get;
+  game.settings.get = (m, k) => (k === "options" ? { containerFlagging: "gm" } : {});
+  assert.deepEqual(flaggableContainers(ana), []);
+  assert.equal(flaggableContainers(gm).length, 4);
+  game.user = ana;
+  const controls = [];
+  for (const fn of hooks.getHeaderControlsApplicationV2) fn({ document: A }, controls);
+  assert.ok(!controls.some((c) => c.action === "quickpay-containers"));
+  game.settings.get = real;
+});
 
 await t("public containers: players see only containers they own, GMs see all", () => {
   const names = (user) => flaggableContainers(user).map((c) => c.name).sort();

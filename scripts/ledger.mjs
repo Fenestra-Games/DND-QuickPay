@@ -1,4 +1,5 @@
 import { MODULE_ID } from "./constants.mjs";
+import { worldOptions } from "./options-store.mjs";
 import { getDenominations } from "./adapters/dnd5e.mjs";
 import { entryFromRecord, personalEntryFromRecord, tableHTML } from "./core/ledger-format.mjs";
 
@@ -144,6 +145,7 @@ function ownersOf(actor) {
 /** Player characters by default, NPCs only when switched on for that actor. */
 export function hasPersonalLedger(actor) {
   if (!actor || actor.documentName !== "Actor") return false;
+  if (!worldOptions().personalLedgers) return false;
   const setting = actor.getFlag(MODULE_ID, PERSONAL_FLAG);
   if (setting === true) return true;
   if (setting === false) return false;
@@ -200,6 +202,7 @@ export async function recordPersonal(rec) {
       const entry = personalEntryFromRecord(rec, side, {
         when: whenText(rec.resolvedAt ?? rec.createdAt),
         ownerIds: ownersOf(actor),
+        mask: worldOptions().maskGmOnly,
       });
       await writeEntries(journal, upsert([...(dataOf(journal).entries ?? [])], entry));
     } catch (err) {

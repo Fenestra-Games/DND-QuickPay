@@ -1,4 +1,5 @@
 import { holdsCurrency } from "../adapters/dnd5e.mjs";
+import { worldOptions } from "../options-store.mjs";
 
 /** Can the current user open QuickPay for this actor? */
 const usableFor = (actor) =>
@@ -26,7 +27,8 @@ export function initEntryPoints() {
         onClick: () => send(actor, "receive"),
       });
     }
-    if (actor.items.contents.some((i) => i.type === "container")) {
+    const mayFlag = game.user.isGM || worldOptions().containerFlagging === "owner";
+    if (mayFlag && actor.items.contents.some((i) => i.type === "container")) {
       controls.push({
         icon: "fa-solid fa-box-open quickpay-gold",
         label: "Public containers",
@@ -34,6 +36,12 @@ export function initEntryPoints() {
         onClick: async () => (await import("./public-containers.mjs")).openPublicContainers(actor),
       });
     }
+    controls.push({
+      icon: "fa-solid fa-sliders quickpay-gold",
+      label: "QuickPay options",
+      action: "quickpay-options",
+      onClick: async () => (await import("./options-app.mjs")).openOptions(),
+    });
     controls.push({
       icon: "fa-solid fa-book quickpay-gold",
       label: "Coin ledgers",

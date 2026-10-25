@@ -29,6 +29,9 @@
  */
 
 import { planPayment, normalizeAmount, applyDelta, invertDelta } from "./coins.mjs";
+import {
+  DEFAULT_OPTIONS, DEFAULT_PERMISSIONS, mergeOptions, mergePermissions, classifyRecipient, decidePermission, limitUnits,
+} from "./options.mjs";
 
 export const STATUS = Object.freeze({
   PENDING: "pending",
@@ -36,6 +39,9 @@ export const STATUS = Object.freeze({
   DECLINED: "declined",
   EXPIRED: "expired",
   CANCELLED: "cancelled",
+  APPROVAL: "approval", // waiting for a GM to approve; no coins have moved
+  DENIED: "denied",
+  APPROVED: "approved", // only ever on the short-lived approval record, never logged
 });
 
 export const VISIBILITY = Object.freeze(["public", "gm-recipient", "gm"]);
@@ -52,6 +58,11 @@ export function createEngine(deps) {
   const { docs, coins, store, ledgers, settings, now, newId, emit } = deps;
   const personal = deps.personal ?? null;
 
+  // Options and the permission grid are optional dependencies: older callers get the defaults
+  const getOptions = () => (settings.options ? mergeOptions(settings.options()) : { ...DEFAULT_OPTIONS });
+  const getPerms = () => (settings.permissions ? mergePermissions(settings.permissions()) : { ...DEFAULT_PERMISSIONS });
+  const userHidden = (userId) => (settings.userHidden ? settings.userHidden(userId) ?? [] : []);
+
   // ---- serialisation -------------------------------------------------------
   let chain = Promise.resolve();
   const serialize = (fn) => {
@@ -61,6 +72,8 @@ export function createEngine(deps) {
   };
 
   const denoms = () => coins.getDenominations({ hidden: settings.hidden() });
+  /** Denominations as one user sees them: the world filter plus their own. */
+  const denomsFor = (userId) => coins.getDenominations({ hidden: [...settings.hidden(), ...userHidden(userId)] });
 
   // ---- input ---------------------------------------------------------------
   const cleanNote = (v) => (typeof v === "string" ? v.trim().slice(0, NOTE_MAX) : "");
@@ -86,8 +99,12 @@ export function createEngine(deps) {
   function needsAcceptance(userId, recipient) {
     if (!recipient || docs.kind(recipient) !== "actor") return false; // containers and burns auto-accept
     if (!docs.isPlayerOwned(recipient)) return false; // GM-side actors auto-accept
-    if (!docs.acceptanceFlag(recipient)) return false; // owner turned acceptance off
+    const o = getOptions();
+    const flag = docs.acceptanceFlag(recipient); // true, false, or undefined when never set
+    const required = o.playersMayChangeAcceptance && typeof flag === "boolean" ? flag : o.acceptanceDefault;
+    if (!required) return false; // the owner (or the world) turned acceptance off
     if (!docs.isGM(userId) && docs.userOwns(userId, recipient)) return false; // your own actor
+    if (docs.isGM(userId) && o.gmGiftsSkipAcceptance) return false;
     return true;
   }
 
@@ -143,7 +160,7 @@ export function createEngine(deps) {
   }
 
   // ---- request -------------------------------------------------------------
-  async function doRequest(userId, input, { dryRun = false } = {}) {
+  async function doRequest(userId, input, { dryRun = false, approvedBy = null } = {}) {
     if (!docs.userExists(userId)) return no("Couldn't identify who made this request.");
     const isGM = docs.isGM(userId);
 
@@ -162,13 +179,22 @@ export function createEngine(deps) {
       return no("The sender and the recipient are the same.");
     }
 
-    // Default permission rules. The configurable matrix replaces this later.
+    // The permission grid. GMs are never restricted; owning the sender is always required.
+    let decision = "allow";
     if (!isGM) {
       if (!sender) return no("Only a GM can create coins from nowhere.");
       if (!recipient) return no("Only a GM can send coins to nowhere.");
       if (!docs.userOwns(userId, sender)) return no(`You don't have permission over ${docs.name(sender)}.`);
-      if (docs.kind(recipient) === "container" && !docs.isPublic(recipient) && !docs.userOwns(userId, recipient)) {
-        return no(`${docs.name(recipient)} isn't accepting coins.`);
+      const isContainer = docs.kind(recipient) === "container";
+      const rule = classifyRecipient({
+        recipientKind: isContainer ? "container" : "actor",
+        ownsRecipient: docs.userOwns(userId, recipient),
+        isPublic: isContainer && docs.isPublic(recipient),
+        isPlayerOwned: !isContainer && docs.isPlayerOwned(recipient),
+      });
+      decision = decidePermission(getPerms(), rule);
+      if (decision === "block") {
+        return no(isContainer ? `${docs.name(recipient)} isn't accepting coins.` : `You can't send coins to ${docs.name(recipient)}.`);
       }
     }
 
@@ -178,7 +204,8 @@ export function createEngine(deps) {
     }
 
     // Work out the coins
-    const d = denoms();
+    const d = denomsFor(userId);
+    const opts = getOptions();
     let receive;
     let escrow = {};
     if (sender) {
@@ -192,7 +219,12 @@ export function createEngine(deps) {
       receive = norm.receive;
     }
 
-    if (dryRun) return ok({ dryRun: true, cost: sender ? toCost(receive, d) : 0 });
+    if (!isGM) {
+      const limit = limitUnits(opts.maxPerTransferGp, d);
+      if (limit && toCost(receive, d) > limit) return no(`That's over the limit of ${opts.maxPerTransferGp} gp per transfer.`);
+    }
+    const needsApproval = decision === "approval" && !approvedBy;
+    if (dryRun) return ok({ dryRun: true, needsApproval, cost: sender ? toCost(receive, d) : 0 });
 
     const pending = needsAcceptance(userId, recipient);
     const t = now();
@@ -216,7 +248,33 @@ export function createEngine(deps) {
       resolvedAt: null,
       resolvedBy: null,
       refunded: null,
+      approvedBy,
     };
+
+    // 0. A grid cell set to "approval": park the request with a GM. No coins move yet.
+    if (needsApproval) {
+      record.status = STATUS.APPROVAL;
+      record.escrow = {};
+      record.expiresAt = t + settings.expiryHours() * 3600;
+      record.request = {
+        senderUuid: clean.senderUuid,
+        recipientUuid: clean.recipientUuid,
+        amount: { ...receive },
+        note: clean.note,
+        visibility: clean.visibility,
+        ledgerId: clean.ledgerId,
+      };
+      try {
+        const pend = await store.loadPending();
+        pend[record.id] = record;
+        await store.savePending(pend);
+      } catch (err) {
+        console.error("dnd-quickpay | could not save approval request", err);
+        return no("Couldn't record the request.");
+      }
+      emit("transferApproval", record);
+      return ok({ status: STATUS.APPROVAL, record });
+    }
 
     // 1. Escrow: take the coins from the sender
     if (sender && !(await coins.commit(sender, escrow))) {
@@ -260,7 +318,8 @@ export function createEngine(deps) {
     if (!input || typeof input !== "object") return no("Invalid request.");
     if (!Array.isArray(recipientUuids) || !recipientUuids.length) return no("Choose at least one recipient.");
     const list = [...new Set(recipientUuids.map((u) => (u == null || u === "" ? null : u)))];
-    if (list.length > MANY_MAX) return no(`You can send to at most ${MANY_MAX} recipients at once.`);
+    const most = Math.min(MANY_MAX, getOptions().maxRecipients);
+    if (list.length > most) return no(`You can send to at most ${most} recipients at once.`);
     if (list.some((u) => u !== null && typeof u !== "string")) return no("Invalid target.");
 
     const base = { ...input };
@@ -338,9 +397,49 @@ export function createEngine(deps) {
     return ok({ status: STATUS.DECLINED, record, refunded });
   }
 
+  /** A record still waiting on someone: pending acceptance, or pending GM approval. */
+  async function getOpen(id) {
+    const pend = await store.loadPending();
+    const record = pend[id];
+    return record && (record.status === STATUS.PENDING || record.status === STATUS.APPROVAL) ? record : null;
+  }
+
+  async function doApprove(userId, id) {
+    if (!docs.isGM(userId)) return no("Only a GM can approve this.");
+    const pend = await store.loadPending();
+    const record = pend[id];
+    if (!record || record.status !== STATUS.APPROVAL) return no("That request is no longer waiting for approval.");
+    const res = await doRequest(record.initiatedBy, record.request, { approvedBy: userId });
+    if (!res.ok) {
+      await finish(record, STATUS.CANCELLED, "approval-failed", userId, { refunded: null });
+      return no(`It couldn't go ahead: ${res.error}`);
+    }
+    const after = await store.loadPending();
+    delete after[id];
+    await store.savePending(after);
+    emit("transferApprovalClosed", { ...record, status: STATUS.APPROVED, resolvedAt: now(), resolvedBy: userId });
+    return ok({ status: res.status, record: res.record });
+  }
+
+  async function doDeny(userId, id) {
+    if (!docs.isGM(userId)) return no("Only a GM can deny this.");
+    const pend = await store.loadPending();
+    const record = pend[id];
+    if (!record || record.status !== STATUS.APPROVAL) return no("That request is no longer waiting for approval.");
+    await finish(record, STATUS.DENIED, "denied-by-gm", userId, { refunded: null });
+    return ok({ status: STATUS.DENIED, record });
+  }
+
   async function doCancel(userId, id) {
-    const record = await getPending(id);
+    const record = await getOpen(id);
     if (!record) return no("That transfer is no longer pending.");
+    if (record.status === STATUS.APPROVAL) {
+      const gm = docs.isGM(userId);
+      const own = record.sender ? await docs.resolve(record.sender.uuid) : null;
+      if (!gm && !(own && docs.userOwns(userId, own))) return no("Only the sender or a GM can cancel this.");
+      await finish(record, STATUS.CANCELLED, gm ? "cancelled-by-gm" : "cancelled", userId, { refunded: null });
+      return ok({ status: STATUS.CANCELLED, record });
+    }
     const isGM = docs.isGM(userId);
     const sender = record.sender ? await docs.resolve(record.sender.uuid) : null;
     if (!isGM && !(sender && docs.userOwns(userId, sender))) {
@@ -355,8 +454,12 @@ export function createEngine(deps) {
     const pend = await store.loadPending();
     let count = 0;
     for (const record of Object.values(pend)) {
-      if (record.status === STATUS.PENDING && record.expiresAt != null && t >= record.expiresAt) {
+      if (record.expiresAt == null || t < record.expiresAt) continue;
+      if (record.status === STATUS.PENDING) {
         await closeWithRefund(record, STATUS.EXPIRED, "expired", null);
+        count++;
+      } else if (record.status === STATUS.APPROVAL) {
+        await finish(record, STATUS.EXPIRED, "expired", null, { refunded: null });
         count++;
       }
     }
@@ -439,13 +542,16 @@ export function createEngine(deps) {
     const clean = typeof name === "string" ? name.trim().slice(0, LEDGER_NAME_MAX) : "";
     if (!clean) return no("A ledger needs a name.");
     const opts = options && typeof options === "object" ? options : {};
-    const made = await ledgers.create(clean, userId, { visibleToAll: opts.visibleToAll === true });
+    const visibleToAll = opts.visibleToAll === undefined ? getOptions().ledgerDefaultReaders === "all" : opts.visibleToAll === true;
+    const made = await ledgers.create(clean, userId, { visibleToAll });
     return ok(made);
   }
 
   return {
     request: (userId, input) => serialize(() => doRequest(userId, input)),
     requestMany: (userId, input, recipientUuids) => serialize(() => doRequestMany(userId, input, recipientUuids)),
+    approve: (userId, id) => serialize(() => doApprove(userId, id)),
+    deny: (userId, id) => serialize(() => doDeny(userId, id)),
     accept: (userId, id) => serialize(() => doAccept(userId, id)),
     decline: (userId, id) => serialize(() => doDecline(userId, id)),
     cancel: (userId, id) => serialize(() => doCancel(userId, id)),

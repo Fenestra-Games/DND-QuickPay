@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import {
   esc, resolvedLine, resolvedHTML, settledHTML, pendingCardHTML, senderCardHTML,
   resultAudience, recipientCardAudience, senderCardAudience, maskedPendingCardHTML, maskedSettledHTML, recipientPrompts,
+  approvalCardHTML, senderApprovalCardHTML, approvedSettledHTML,
 } from "../scripts/core/format.mjs";
 import {
   entryFromRecord, filterEntries, partyNames, rowsHTML, tableHTML,
@@ -223,9 +224,31 @@ t("masked prompts hide sender, note and ledger, and settle without revealing the
   assert.deepEqual(recipientPrompts({ ...r, visibility: "public" }, ctx), [{ to: ["gm1", "gm2", "ben"], masked: false }]);
 });
 
+t("approval cards: GM gets approve and deny, the sender gets cancel, and hostile text is escaped", () => {
+  const evil = "<script>x</script>";
+  const r = rec({ status: "approval", note: evil, sender: { uuid: "a", name: evil }, request: {} });
+  const gmCard = approvalCardHTML(r, ctx);
+  assert.match(gmCard, /data-quickpay-action="approve"/);
+  assert.match(gmCard, /data-quickpay-action="deny"/);
+  assert.ok(!gmCard.includes("<script"));
+  const own = senderApprovalCardHTML(r, ctx);
+  assert.match(own, /No coins have moved yet/);
+  assert.match(own, /data-quickpay-action="cancel"/);
+  assert.doesNotMatch(own, /approve"/);
+  assert.doesNotMatch(approvedSettledHTML(r, ctx), /<button|<script/);
+});
+
+t("a denied, cancelled or expired approval never claims coins went back", () => {
+  const base = { request: {}, refunded: null };
+  assert.match(resolvedLine(rec({ ...base, status: "denied" }), ctx), /The GM denied/);
+  assert.doesNotMatch(resolvedLine(rec({ ...base, status: "expired" }), ctx), /went back|couldn't be returned/);
+  assert.doesNotMatch(resolvedLine(rec({ ...base, status: "cancelled" }), ctx), /went back|couldn't be returned/);
+  assert.match(resolvedLine(rec({ status: "expired", refunded: true }), ctx), /went back/, "ordinary expiries still do");
+});
+
 t("every card carries the gold coin icon", () => {
   const r = rec({ status: "pending" });
-  for (const html of [resolvedHTML(r, ctx), settledHTML(r, ctx), pendingCardHTML(r, ctx), senderCardHTML(r, ctx), maskedPendingCardHTML(r, ctx), maskedSettledHTML(r, ctx)]) {
+  for (const html of [resolvedHTML(r, ctx), settledHTML(r, ctx), pendingCardHTML(r, ctx), senderCardHTML(r, ctx), maskedPendingCardHTML(r, ctx), maskedSettledHTML(r, ctx), approvalCardHTML(r, ctx), senderApprovalCardHTML(r, ctx), approvedSettledHTML(r, ctx)]) {
     assert.match(html, /fa-coins quickpay-gold/);
   }
 });

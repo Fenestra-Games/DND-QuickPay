@@ -1,4 +1,7 @@
 import { MODULE_ID } from "../constants.mjs";
+import { toUnits, formatAmount } from "../core/coins.mjs";
+import { limitUnits } from "../core/options.mjs";
+import { worldOptions, playerOptions, savePlayerOptions, hiddenFor } from "../options-store.mjs";
 import { getDenominations, getBalance, quote, holdsCurrency } from "../adapters/dnd5e.mjs";
 import { esc } from "../core/format.mjs";
 import {
@@ -40,7 +43,12 @@ export class SendDialog extends ApplicationV2 {
   }
 
   get hidden() {
-    return game.settings.get(MODULE_ID, "hiddenDenominations")?.list ?? [];
+    return hiddenFor(game.user);
+  }
+
+  /** Re-fit the window to its content after anything is added or removed. */
+  _fit() {
+    if (this.rendered) this.setPosition({ height: "auto" });
   }
 
   get multi() {
@@ -109,11 +117,20 @@ export class SendDialog extends ApplicationV2 {
     q('[data-qp="send"]').addEventListener("click", () => this._submit());
     q('[data-qp="pick"]').addEventListener("click", () => this._pick());
 
+    // Your own defaults
+    const mine = playerOptions();
+    q('[name="visibility"]').value = mine.defaultVisibility || worldOptions().defaultVisibility;
+    if (mine.defaultLedger && ledgers.some((l) => l.id === mine.defaultLedger)) q('[name="ledger"]').value = mine.defaultLedger;
+
     // Anything targeted on the canvas is a ready-made recipient
     const targeted = [...(game.user.targets ?? [])]
       .map((t) => t.actor)
       .filter((a) => a && holdsCurrency(a) && a.uuid !== this.actor.uuid);
     for (const a of this.multi ? targeted : targeted.slice(0, 1)) this._add({ uuid: a.uuid, name: a.name }, false);
+    if (!this.selected.length && this.multi && mine.rememberRecipients) {
+      const last = game.user.getFlag(MODULE_ID, "lastRecipients");
+      for (const uuid of Array.isArray(last) ? last : []) if (this._names.has(uuid)) this._add({ uuid, name: this._names.get(uuid) }, false);
+    }
     this._refresh();
   }
 
@@ -132,6 +149,7 @@ export class SendDialog extends ApplicationV2 {
       .map((s) => `<span class="quickpay-chip">${esc(s.name)}<button type="button" data-remove="${esc(s.uuid)}" aria-label="Remove ${esc(s.name)}">&times;</button></span>`)
       .join("");
     this._preview();
+    this._fit();
   }
 
   async _pick() {
@@ -197,6 +215,22 @@ export class SendDialog extends ApplicationV2 {
       res = mintLines(parsed.amount, denoms);
     } else res = { ok: true, lines: [] };
     out.innerHTML = res.lines.map((l) => `<div class="${res.ok ? "" : "quickpay-bad"}">${esc(l)}</div>`).join("");
+    this._fit();
+  }
+
+  /** Ask before a large send, or every send if the player prefers. */
+  async _confirm(amount, count) {
+    const denoms = this._denoms;
+    const total = toUnits(amount, denoms) * count;
+    const limit = limitUnits(worldOptions().confirmAboveGp, denoms);
+    const large = limit != null && total > limit;
+    if (!large && !playerOptions().confirmBeforeSend) return true;
+    const who = this.mode === "receive" ? this.actor.name : count === 1 ? this.selected[0].name : `${count} recipients`;
+    return foundry.applications.api.DialogV2.confirm({
+      window: { title: "Confirm" },
+      content: `<p>${this.mode === "receive" ? "Receive" : "Send"} <strong>${esc(formatAmount(amount, denoms))}</strong>${count > 1 ? " each" : ""} ${this.mode === "receive" ? "from" : "to"} <strong>${esc(who)}</strong>?</p>`,
+      rejectClose: false,
+    });
   }
 
   async _submit() {
@@ -209,6 +243,8 @@ export class SendDialog extends ApplicationV2 {
     const parsed = parseAmounts(this._raw());
     if (!parsed.ok) return ui.notifications.warn(parsed.error);
     if (parsed.empty) return ui.notifications.warn("Enter an amount.");
+
+    if (!(await this._confirm(parsed.amount, this.multi ? this.selected.length : 1))) return;
 
     this.busy = true;
     const buttons = c.querySelectorAll("button");
@@ -244,6 +280,9 @@ export class SendDialog extends ApplicationV2 {
         msg = resultManyMessage(res);
       }
       ui.notifications[msg.type](msg.text);
+      if ((res?.ok || res?.done > 0) && this.multi && playerOptions().rememberRecipients) {
+        await game.user.setFlag(MODULE_ID, "lastRecipients", this.selected.map((s) => s.uuid).filter((u) => u !== NOWHERE));
+      }
       if (res?.ok || res?.done > 0) this.close();
     } finally {
       this.busy = false;

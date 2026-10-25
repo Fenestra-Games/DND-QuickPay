@@ -28,7 +28,7 @@ const button = (action, id, label, extra = "") =>
   `<button type="button" class="quickpay-btn" data-quickpay-action="${esc(action)}" data-transfer="${esc(id)}"${extra}>${esc(label)}</button>`;
 
 const returned = (r) => {
-  if (!r.sender) return "";
+  if (!r.sender || r.request) return ""; // no sender, or an approval request that never took any coins
   return r.refunded === false
     ? " The coins couldn't be returned."
     : ` The coins went back to ${b(r.sender.name)}.`;
@@ -52,6 +52,8 @@ export function resolvedLine(r, ctx) {
         return `${b(to)} no longer exists, so the transfer of ${amt(r, ctx)} was cancelled.${returned(r)}`;
       }
       return `The transfer of ${amt(r, ctx)} ${from ? `from ${b(from)} ` : ""}to ${b(to)} was cancelled.${returned(r)}`;
+    case "denied":
+      return `The GM denied ${b(from ?? "the")} request to pay ${amt(r, ctx)} to ${b(to)}.`;
     default:
       return `${b(from ?? "nowhere")} to ${b(to ?? "nowhere")}: ${esc(r.status)}`;
   }
@@ -116,6 +118,37 @@ export function senderCardHTML(r, ctx) {
 
 // ---- audiences ---------------------------------------------------------------
 const uniq = (list) => [...new Set(list.filter(Boolean))];
+
+/** Card for the GMs when a transfer needs their approval. */
+export function approvalCardHTML(r, ctx) {
+  return (
+    `<div class="quickpay-card quickpay-pending">` + COIN +
+    `${b(r.sender?.name)} asks to pay ${amt(r, ctx)} to ${b(r.recipient?.name)}. This needs GM approval.` +
+    noteHTML(r) +
+    ledgerHTML(r, ctx) +
+    (ctx.expiresText ? `<div class="quickpay-expiry">Expires ${esc(ctx.expiresText)}</div>` : "") +
+    `<div class="quickpay-buttons">` +
+    button("approve", r.id, "Approve") +
+    button("deny", r.id, "Deny") +
+    `</div></div>`
+  );
+}
+
+/** Card for the sender while a GM decides. */
+export function senderApprovalCardHTML(r, ctx) {
+  return (
+    `<div class="quickpay-card quickpay-pending">` + COIN +
+    `Waiting for the GM to approve your payment of ${amt(r, ctx)} to ${b(r.recipient?.name)}. No coins have moved yet.` +
+    noteHTML(r) +
+    (ctx.expiresText ? `<div class="quickpay-expiry">Expires ${esc(ctx.expiresText)}</div>` : "") +
+    `<div class="quickpay-buttons">${button("cancel", r.id, "Cancel")}</div></div>`
+  );
+}
+
+/** What an approval card turns into once the GM has approved (the transfer then posts its own card). */
+export function approvedSettledHTML(r, ctx) {
+  return `<div class="quickpay-card quickpay-settled quickpay-completed">` + COIN + `The GM approved the payment of ${amt(r, ctx)} to ${b(r.recipient?.name)}.</div>`;
+}
 
 /** Whisper list for the result message. null means everyone (public). */
 export function resultAudience(r, ctx) {

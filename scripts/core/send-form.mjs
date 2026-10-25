@@ -57,6 +57,7 @@ export function mintLines(amount, denoms) {
 export function resultMessage(res, recipientName = "the recipient") {
   if (!res?.ok) return { type: "warn", text: res?.error ?? "That didn't work." };
   if (res.status === "pending") return { type: "info", text: `Waiting for ${recipientName} to accept.` };
+  if (res.status === "approval") return { type: "info", text: "Waiting for the GM to approve. No coins have moved yet." };
   return { type: "info", text: "Done." };
 }
 
@@ -68,7 +69,12 @@ export function scaleAmount(amount, count) {
 /** One sentence after a send to several recipients. */
 export function resultManyMessage(res) {
   if (!res?.ok) return { type: "warn", text: res?.error ?? "That didn't work." };
-  const waiting = (res.results ?? []).filter((r) => r.status === "pending").length;
-  const text = `Sent to ${res.done} ${res.done === 1 ? "recipient" : "recipients"}.${waiting ? ` ${waiting} waiting for acceptance.` : ""}`;
+  const results = res.results ?? [];
+  const waiting = results.filter((r) => r.status === "pending").length;
+  const approval = results.filter((r) => r.status === "approval").length;
+  const text =
+    `Sent to ${res.done} ${res.done === 1 ? "recipient" : "recipients"}.` +
+    (waiting ? ` ${waiting} waiting for acceptance.` : "") +
+    (approval ? ` ${approval} waiting for GM approval.` : "");
   return { type: "info", text };
 }

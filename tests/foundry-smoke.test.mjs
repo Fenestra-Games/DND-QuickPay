@@ -31,10 +31,15 @@ globalThis.CONFIG = {
   },
 };
 
-const mkUser = (id, isGM) => ({ id, name: id, isGM });
+const mkUser = (id, isGM) => ({
+  id, name: id, isGM, flags: {},
+  getFlag(scope, key) { return this.flags[`${scope}.${key}`]; },
+  async setFlag(scope, key, v) { this.flags[`${scope}.${key}`] = v; },
+});
 const gm = mkUser("gm", true), ana = mkUser("ana", false), ben = mkUser("ben", false), eve = mkUser("eve", false);
 const userList = [gm, ana, ben, eve];
 
+const menus = new Map();
 const settingStore = new Map();
 const settingDefs = new Map();
 const warnings = [];
@@ -55,6 +60,7 @@ const game = {
   time: { worldTime: 5000 },
   modules: new Map([["dnd-quickpay", {}], ["socketlib", { active: true }]]),
   settings: {
+    registerMenu: (mod, key, def) => menus.set(`${mod}.${key}`, def),
     register: (mod, key, def) => { settingDefs.set(`${mod}.${key}`, def); settingStore.set(`${mod}.${key}`, structuredClone(def.default)); },
     get: (mod, key) => {
       assert.ok(settingDefs.has(`${mod}.${key}`), `setting ${mod}.${key} was never registered`);
@@ -182,6 +188,13 @@ assert.ok(api, "api was not created");
 const as = (user) => { game.user = user; game.userId = user.id; };
 let n = 0;
 const t = async (name, fn) => { await fn(); n++; console.log("ok  ", name); };
+
+await t("the options window is registered as a settings menu for everyone", () => {
+  const m = menus.get("dnd-quickpay.options-menu");
+  assert.ok(m);
+  assert.equal(m.restricted, false);
+  assert.equal(typeof m.type, "function");
+});
 
 await t("settings register with defaults", () => {
   assert.equal(game.settings.get("dnd-quickpay", "expiryHours"), 12);
@@ -458,6 +471,75 @@ await t("sending to several recipients goes through the socket as separate trans
   const bad = await api.requestMany({ senderUuid: "Actor.A", amount: { gp: 1 } }, ["Actor.NPC", secret.uuid]);
   assert.equal(bad.ok, false);
   assert.equal(A.system.currency.gp, before - 4, "nothing moved when one recipient was refused");
+});
+
+await t("approval: a player's request waits for a GM, with cards for both, then runs on approval", async () => {
+  as(gm);
+  await game.settings.set("dnd-quickpay", "permissions", { playerToGMActor: "approval" });
+  as(ana);
+  A.system.currency.gp = Math.max(A.system.currency.gp, 10);
+  const npcBefore = NPC.system.currency.gp;
+  const aBefore = A.system.currency.gp;
+  messages.length = 0;
+  const r = await api.request({ senderUuid: "Actor.A", recipientUuid: "Actor.NPC", amount: { gp: 2 }, note: "please" });
+  assert.equal(r.status, "approval");
+  assert.equal(A.system.currency.gp, aBefore, "nothing taken yet");
+  const cards = messages.filter((m) => m.flags["dnd-quickpay"].role === "pending");
+  assert.equal(cards.length, 2);
+  const gmCard = cards.find((m) => m.content.includes('data-quickpay-action="approve"'));
+  assert.deepEqual(gmCard.whisper, ["gm"]);
+  assert.ok(gmCard.content.includes('data-quickpay-action="deny"'));
+  const own = cards.find((m) => m.content.includes("Waiting for the GM"));
+  assert.deepEqual(own.whisper, ["ana"]);
+  as(ana);
+  assert.equal((await api.approve(r.record.id)).ok, false, "players can't approve");
+  as(gm);
+  const a = await api.approve(r.record.id);
+  assert.equal(a.ok, true, JSON.stringify(a));
+  assert.equal(NPC.system.currency.gp, npcBefore + 2);
+  assert.equal(A.system.currency.gp, aBefore - 2);
+  assert.ok(cards.every((m) => m.flags["dnd-quickpay"].role === "settled" && !m.content.includes("<button")));
+  assert.ok(messages.some((m) => m.flags["dnd-quickpay"].role === "result"), "the real transfer posts its own card");
+  as(ana);
+  const again = await api.request({ senderUuid: "Actor.A", recipientUuid: "Actor.NPC", amount: { gp: 1 } });
+  as(gm);
+  const d = await api.deny(again.record.id);
+  assert.equal(d.status, "denied");
+  assert.equal(NPC.system.currency.gp, npcBefore + 2);
+  await game.settings.set("dnd-quickpay", "permissions", {});
+});
+
+await t("limits and options apply through the real settings", async () => {
+  as(gm);
+  await game.settings.set("dnd-quickpay", "options", { maxPerTransferGp: 3, maskGmOnly: false });
+  as(ana);
+  A.system.currency.gp = Math.max(A.system.currency.gp, 10);
+  const over = await api.request({ senderUuid: "Actor.A", recipientUuid: "Actor.NPC", amount: { gp: 4 } });
+  assert.equal(over.ok, false);
+  assert.match(over.error, /limit of 3 gp/);
+  // with masking off, a GM-only deposit is plain in the player's own ledger
+  as(gm);
+  const m = await api.request({ senderUuid: null, recipientUuid: "Actor.B", amount: { gp: 1 }, visibility: "gm", note: "open note" });
+  await api.accept(m.record.id);
+  const jB = journals.find((j) => j.name === "B (QuickPay ledger)");
+  const e = jB.flags["dnd-quickpay"].ledger.entries.find((x) => x.id === m.record.id);
+  assert.equal(e.hidden, false);
+  assert.equal(e.note, "open note");
+  await game.settings.set("dnd-quickpay", "options", {});
+});
+
+await t("a player's own hidden coins are respected by the real socket path", async () => {
+  as(ana);
+  await ana.setFlag("dnd-quickpay", "options", { hiddenDenominations: ["sp"] });
+  A.system.currency.sp = 20;
+  A.system.currency.gp = Math.max(A.system.currency.gp, 5);
+  const spBefore = A.system.currency.sp;
+  const r = await api.request({ senderUuid: "Actor.A", recipientUuid: "Actor.NPC", amount: { gp: 1 } });
+  assert.equal(r.ok, true);
+  assert.equal(A.system.currency.sp, spBefore, "silver untouched");
+  const bad = await api.request({ senderUuid: "Actor.A", recipientUuid: "Actor.NPC", amount: { sp: 1 } });
+  assert.equal(bad.ok, false);
+  await ana.setFlag("dnd-quickpay", "options", {});
 });
 
 await t("business ledger reading is refused to non-observers", async () => {

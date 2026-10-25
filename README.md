@@ -2,7 +2,7 @@
 
 A Foundry VTT module for sending coins between players, GMs, actors, and containers. Built for Foundry v14.367+ and dnd5e, with socketlib required. A system adapter layer is in place so other systems can be added later.
 
-**Status:** stage 3b of the build, plus the GM toolbar. Players can send coins from a dialog, opened from the character sheet or the token HUD. The player Options menu, predefined targets, and the configurable permission matrix come in stage 4.
+**Status:** stage 4 is mostly in: an options window with a permission grid, approvals, and limits. Players can send coins from a dialog, opened from the character sheet or the token HUD. Predefined targets are still to come.
 
 ## Install
 
@@ -32,6 +32,19 @@ Install socketlib too, then enable both in your world.
 - Players can choose from targeted tokens, tokens they can see on the scene, player characters, their own containers, and public containers. GMs also get every actor and container, plus Nowhere (create or remove coins).
 - **Public containers:** tick a container in the Public containers window and any player can send coins to it. Owners can tick their own, and GMs can tick any.
 - From a macro: `game.modules.get("dnd-quickpay").api.openSend()` opens the dialog for your selected token, or your own character if nothing is selected. To receive as a GM: `game.modules.get("dnd-quickpay").api.openSend(canvas.tokens.controlled[0].actor, "receive")`.
+
+## Options
+
+Open **Configure Settings, Module Settings, DND QuickPay options** (or the Options entry in a sheet's header menu, or the sliders button in the GM toolbar). Everyone gets a **Me** tab, and GMs get five more.
+
+- **Me:** your default visibility and ledger, remembering your last recipients, a confirm step before sending, a notice when coins arrive, coins you never want used, and whether your own characters must accept coins.
+- **Permissions:** a grid of what players may do. Each row is Allowed, Needs GM approval, or Blocked. A player must always own the actor they pay from, and GMs are never restricted. With Needs GM approval, nothing moves until a GM approves, and the sender can cancel while they wait. Requests expire like pending transfers.
+- **Transfers:** acceptance defaults, whether players may change them, whether GM gifts skip acceptance, expiry hours, the offline GM message, default visibility, the waiting card, a confirm threshold (100 gp by default), a per-transfer cap for players, and the most recipients per send.
+- **Ledgers:** who can create them, who can read new ones, personal ledgers on or off, automatic creation, whether GM-only transfers are masked, and who can mark a container public.
+- **Coins:** hide denominations for everyone.
+- **Characters:** per player character, whether they must accept coins and whether they get a personal ledger. NPC personal ledgers are switched on from the console with `game.modules.get("dnd-quickpay").api.ledgers.setPersonal(actorUuid, true)`.
+
+A container's public flag lives on the container itself, so a player with console access could set it even when only the GM is meant to. Treat that setting as a guide for honest players.
 
 ## Chat cards
 
@@ -70,6 +83,8 @@ await qp.expireNow();                // GM only
 Hooks for other modules: `dnd-quickpay.transferPending`, `dnd-quickpay.transferResolved`, and `dnd-quickpay.transferAmended`, both called with the transfer record.
 
 ## Known limits at this stage
+
+- Approval requests and the options are stored in world settings. They hold no secrets, but a player who reads the console can see them.
 
 - The send dialog and entry points have only been tested against stand-ins. Treat them as new until you've run them in your world.
 - The Foundry-side ledger and chat code is tested against stand-ins only, so treat it as new until you have run it in your world.

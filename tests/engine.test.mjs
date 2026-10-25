@@ -41,6 +41,9 @@ function makeWorld({ hidden = [], hours = 12 } = {}) {
     biz: { name: "Jims Pickles", users: new Set(["ana"]), entries: [] },
   };
   const creators = new Set();
+  const worldOptions = {};
+  const grid = {};
+  const userHiddenMap = {};
   const failLedger = { on: false };
   const personalCalls = [];
   const failPersonal = { on: false };
@@ -107,7 +110,7 @@ function makeWorld({ hidden = [], hours = 12 } = {}) {
       record: async (r) => { if (failPersonal.on) throw new Error("personal down"); personalCalls.push(["record", r.id, r.status]); },
       reconcile: async (o, nw) => { personalCalls.push(["reconcile", nw.id, nw.note]); },
     },
-    settings: { expiryHours: () => hours, hidden: () => hidden, defaultVisibility: () => "public" },
+    settings: { expiryHours: () => hours, hidden: () => hidden, defaultVisibility: () => "public", options: () => worldOptions, permissions: () => grid, userHidden: (u) => userHiddenMap[u] ?? [] },
     now: () => T.now,
     newId: () => `id${++id}`,
     emit: (name, rec) => events.push([name, rec.id, rec.status]),
@@ -116,10 +119,10 @@ function makeWorld({ hidden = [], hours = 12 } = {}) {
   const total = () => {
     let sum = 0;
     for (const d of docs.values()) sum += toUnits(d.bal, ALL);
-    for (const r of Object.values(pending)) if (r.sender) sum += toUnits(r.amount, ALL);
+    for (const r of Object.values(pending)) if (r.sender && r.status !== "approval") sum += toUnits(r.amount, ALL);
     return sum;
   };
-  return { T, users, docs, A, B, NPC, Pot, Priv, Locked, log, events, deps, engine: createEngine(deps), total, getPending: () => pending, ledgerState, creators, failLedger, personalCalls, failPersonal };
+  return { T, users, docs, A, B, NPC, Pot, Priv, Locked, log, events, deps, engine: createEngine(deps), total, getPending: () => pending, ledgerState, creators, failLedger, personalCalls, failPersonal, worldOptions, grid, userHiddenMap };
 }
 
 let n = 0;
@@ -742,6 +745,183 @@ await t("dry runs never change anything", async () => {
   assert.equal(r.ok, false);
   assert.equal(w.A.bal.gp, 5);
   assert.deepEqual(w.events, []);
+});
+
+// ---- options, grid, approvals, limits ----------------------------------------
+await t("grid: a blocked cell refuses, and an allowed one works", async () => {
+  const w = makeWorld();
+  w.A.bal.gp = 5;
+  w.grid.playerToGMActor = "block";
+  const r = await send(w, "ana", "A", "NPC", { gp: 1 });
+  assert.equal(r.ok, false);
+  assert.match(r.error, /can't send coins to/);
+  assert.equal(w.A.bal.gp, 5);
+  w.grid.playerToGMActor = "allow";
+  assert.equal((await send(w, "ana", "A", "NPC", { gp: 1 })).ok, true);
+});
+
+await t("grid: other containers can be opened up, and a GM is never restricted", async () => {
+  const w = makeWorld();
+  w.A.bal.gp = 5;
+  assert.equal((await send(w, "ana", "A", "Locked", { gp: 1 })).ok, false);
+  w.grid.playerToOtherContainer = "allow";
+  assert.equal((await send(w, "ana", "A", "Locked", { gp: 1 })).ok, true);
+  w.grid.playerToGMActor = "block";
+  w.grid.playerToPlayer = "block";
+  w.grid.playerToOtherContainer = "block";
+  assert.equal((await send(w, "gm", null, "NPC", { gp: 1 })).ok, true);
+  assert.equal((await send(w, "gm", null, "Locked", { gp: 1 })).ok, true);
+});
+
+await t("grid: sending to your own container follows its own cell", async () => {
+  const w = makeWorld();
+  w.B.bal.gp = 5;
+  w.grid.playerToOwnContainer = "block";
+  assert.equal((await send(w, "ben", "B", "Priv", { gp: 1 })).ok, false);
+  w.grid.playerToOwnContainer = "allow";
+  assert.equal((await send(w, "ben", "B", "Priv", { gp: 1 })).ok, true);
+});
+
+await t("approval: nothing moves until a GM approves, then it runs as a normal transfer", async () => {
+  const w = makeWorld();
+  w.A.bal.gp = 5;
+  w.grid.playerToGMActor = "approval";
+  const start = w.total();
+  const r = await send(w, "ana", "A", "NPC", { gp: 2 }, { note: "bribe" });
+  assert.equal(r.ok, true);
+  assert.equal(r.status, "approval");
+  assert.equal(w.A.bal.gp, 5, "no escrow yet");
+  assert.equal(w.NPC.bal.gp, 0);
+  assert.ok(w.events.some((e) => e[0] === "transferApproval"));
+  assert.equal(w.total(), start);
+
+  assert.equal((await w.engine.approve("ana", r.record.id)).ok, false, "a player can't approve their own request");
+  assert.equal((await w.engine.accept("ben", r.record.id)).ok, false, "approval requests can't be accepted like transfers");
+  const a = await w.engine.approve("gm", r.record.id);
+  assert.equal(a.ok, true, JSON.stringify(a));
+  assert.equal(a.status, "completed");
+  assert.equal(w.A.bal.gp, 3);
+  assert.equal(w.NPC.bal.gp, 2);
+  assert.equal(w.log.length, 1, "only the real transfer is logged");
+  assert.equal(w.log[0].initiatedBy, "ana");
+  assert.equal(w.log[0].approvedBy, "gm");
+  assert.equal(w.log[0].note, "bribe");
+  assert.deepEqual(w.getPending(), {});
+  assert.ok(w.events.some((e) => e[0] === "transferApprovalClosed"));
+  assert.equal((await w.engine.approve("gm", r.record.id)).ok, false, "can't approve twice");
+});
+
+await t("approval: deny, cancel, and expiry log it and move nothing", async () => {
+  const w = makeWorld();
+  w.A.bal.gp = 5;
+  w.grid.playerToGMActor = "approval";
+  const mk = async () => (await send(w, "ana", "A", "NPC", { gp: 1 })).record.id;
+  const d = await mk();
+  assert.equal((await w.engine.deny("ana", d)).ok, false);
+  assert.equal((await w.engine.deny("gm", d)).status, "denied");
+  const c = await mk();
+  assert.equal((await w.engine.cancel("ben", c)).ok, false, "a stranger can't cancel");
+  assert.equal((await w.engine.cancel("ana", c)).status, "cancelled");
+  const e = await mk();
+  w.T.now += 13 * 3600;
+  assert.equal(await w.engine.expireDue(), 1);
+  assert.deepEqual(w.log.map((r) => r.status), ["denied", "cancelled", "expired"]);
+  assert.equal(w.A.bal.gp, 5);
+  assert.equal(w.NPC.bal.gp, 0);
+  assert.deepEqual(w.getPending(), {});
+  assert.ok(e);
+});
+
+await t("approval: if the sender can no longer pay, approving fails cleanly", async () => {
+  const w = makeWorld();
+  w.A.bal.gp = 3;
+  w.grid.playerToGMActor = "approval";
+  const r = await send(w, "ana", "A", "NPC", { gp: 3 });
+  w.A.bal.gp = 0;
+  const a = await w.engine.approve("gm", r.record.id);
+  assert.equal(a.ok, false);
+  assert.match(a.error, /Not enough coin/);
+  assert.equal(w.log.at(-1).status, "cancelled");
+  assert.deepEqual(w.getPending(), {});
+});
+
+await t("approval: an unaffordable request is refused up front, and a GM never needs approval", async () => {
+  const w = makeWorld();
+  w.A.bal.gp = 1;
+  w.grid.playerToGMActor = "approval";
+  assert.equal((await send(w, "ana", "A", "NPC", { gp: 5 })).ok, false);
+  const g = await send(w, "gm", null, "NPC", { gp: 5 });
+  assert.equal(g.status, "completed");
+});
+
+await t("approval through requestMany: each recipient is its own request", async () => {
+  const w = makeWorld();
+  w.A.bal.gp = 10;
+  w.grid.playerToGMActor = "approval";
+  const r = await w.engine.requestMany("ana", { senderUuid: "A", amount: { gp: 2 } }, ["NPC", "Pot"]);
+  assert.deepEqual(r.results.map((x) => x.status), ["approval", "completed"]);
+  assert.equal(w.A.bal.gp, 8);
+});
+
+await t("limits: players are capped per transfer, GMs are not", async () => {
+  const w = makeWorld();
+  w.A.bal.gp = 500;
+  w.worldOptions.maxPerTransferGp = 50;
+  const over = await send(w, "ana", "A", "NPC", { gp: 51 });
+  assert.equal(over.ok, false);
+  assert.match(over.error, /limit of 50 gp/);
+  assert.equal((await send(w, "ana", "A", "NPC", { gp: 50 })).ok, true);
+  assert.equal((await send(w, "gm", null, "NPC", { gp: 500 })).ok, true);
+});
+
+await t("limits: the recipient cap is configurable", async () => {
+  const w = makeWorld();
+  w.A.bal.gp = 10;
+  w.worldOptions.maxRecipients = 2;
+  const r = await w.engine.requestMany("ana", { senderUuid: "A", amount: { gp: 1 } }, ["NPC", "Pot", "B"]);
+  assert.equal(r.ok, false);
+  assert.match(r.error, /at most 2/);
+});
+
+await t("acceptance options: world default, player control, and GM gifts", async () => {
+  const w = makeWorld();
+  w.A.bal.gp = 5;
+  w.worldOptions.acceptanceDefault = false;
+  w.B.acceptance = undefined; // never set
+  assert.equal((await send(w, "ana", "A", "B", { gp: 1 })).status, "completed", "world default off, nothing set");
+  w.B.acceptance = true;
+  assert.equal((await send(w, "ana", "A", "B", { gp: 1 })).status, "pending", "the owner's own setting wins");
+  w.worldOptions.playersMayChangeAcceptance = false;
+  assert.equal((await send(w, "ana", "A", "B", { gp: 1 })).status, "completed", "players can't override the world default");
+  w.worldOptions.playersMayChangeAcceptance = true;
+  w.worldOptions.acceptanceDefault = true;
+  w.B.acceptance = undefined;
+  assert.equal((await send(w, "gm", null, "B", { gp: 1 })).status, "pending");
+  w.worldOptions.gmGiftsSkipAcceptance = true;
+  assert.equal((await send(w, "gm", null, "B", { gp: 1 })).status, "completed");
+  assert.equal((await send(w, "ana", "A", "B", { gp: 1 })).status, "pending", "players still need acceptance");
+});
+
+await t("a player's own hidden coins are never spent or given as change", async () => {
+  const w = makeWorld();
+  w.A.bal.gp = 2;
+  w.A.bal.sp = 20;
+  w.userHiddenMap.ana = ["sp"];
+  const r = await send(w, "ana", "A", "NPC", { gp: 1 });
+  assert.equal(r.ok, true);
+  assert.equal(w.A.bal.sp, 20, "silver untouched");
+  assert.equal(w.A.bal.gp, 1);
+  const bad = await send(w, "ana", "A", "NPC", { sp: 5 });
+  assert.equal(bad.ok, false, "a hidden coin can't be requested");
+});
+
+await t("new ledgers default to the world's chosen readers", async () => {
+  const w = makeWorld();
+  w.worldOptions.ledgerDefaultReaders = "all";
+  const made = await w.engine.createLedger("gm", "Open book");
+  assert.equal(w.ledgerState[made.id].opts.visibleToAll, true);
+  const forced = await w.engine.createLedger("gm", "Closed book", { visibleToAll: false });
+  assert.equal(w.ledgerState[forced.id].opts.visibleToAll, false);
 });
 
 console.log(`\n${n} engine tests passed`);

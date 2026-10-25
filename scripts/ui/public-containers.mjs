@@ -1,11 +1,13 @@
 import { MODULE_ID, FLAGS } from "../constants.mjs";
 import { holdsCurrency } from "../adapters/dnd5e.mjs";
 import { esc } from "../core/format.mjs";
+import { worldOptions } from "../options-store.mjs";
 
 const { ApplicationV2 } = foundry.applications.api;
 
 /** Container items the current user may flag: owned ones, or every one for a GM. Optionally one actor's only. */
 export function flaggableContainers(user = game.user, actor = null) {
+  if (!user.isGM && worldOptions().containerFlagging === "gm") return [];
   const actors = actor ? [actor] : game.actors.contents;
   return actors
     .filter((a) => user.isGM || a.testUserPermission(user, "OWNER"))

@@ -2,6 +2,7 @@ import { MODULE_ID, FLAGS, LOG_CAP } from "./constants.mjs";
 import { getDenominations, getBalance, holdsCurrency, commit } from "./adapters/dnd5e.mjs";
 import { createEngine } from "./core/engine.mjs";
 import * as ledger from "./ledger.mjs";
+import { worldOptions, permissionGrid, playerOptions } from "./options-store.mjs";
 
 /** Connects the engine to real Foundry documents, settings, and hooks. */
 export function buildEngine() {
@@ -27,7 +28,7 @@ export function buildEngine() {
       return !!u && doc.testUserPermission(u, "OWNER");
     },
     isPlayerOwned: (actor) => game.users.contents.some((u) => !u.isGM && actor.testUserPermission(u, "OWNER")),
-    acceptanceFlag: (actor) => actor.getFlag(MODULE_ID, FLAGS.requiresAcceptance) !== false,
+    acceptanceFlag: (actor) => actor.getFlag(MODULE_ID, FLAGS.requiresAcceptance),
     isPublic: (container) => container.getFlag(MODULE_ID, FLAGS.publicRecipient) === true,
   };
 
@@ -56,7 +57,10 @@ export function buildEngine() {
   const settings = {
     expiryHours: () => Number(game.settings.get(MODULE_ID, "expiryHours")) || 12,
     hidden: () => game.settings.get(MODULE_ID, "hiddenDenominations")?.list ?? [],
-    defaultVisibility: () => "public",
+    defaultVisibility: () => worldOptions().defaultVisibility,
+    options: () => game.settings.get(MODULE_ID, "options"),
+    permissions: () => game.settings.get(MODULE_ID, "permissions"),
+    userHidden: (userId) => playerOptions(game.users.get(userId)).hiddenDenominations,
   };
 
   return createEngine({

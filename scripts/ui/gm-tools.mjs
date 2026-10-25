@@ -51,11 +51,12 @@ export function initGMTools() {
         }),
         "qp-ledgers": tool("qp-ledgers", "Coin ledgers", "fa-solid fa-book quickpay-gold", 3, () => open("./ledger-app.mjs", "openLedgerViewer")),
         "qp-containers": tool("qp-containers", "Public containers", "fa-solid fa-box-open quickpay-gold", 4, () => open("./public-containers.mjs", "openPublicContainers")),
-        "qp-personal": tool("qp-personal", "Create personal ledgers", "fa-solid fa-user-plus quickpay-gold", 5, async () => {
+        "qp-options": tool("qp-options", "QuickPay options", "fa-solid fa-sliders quickpay-gold", 5, () => open("./options-app.mjs", "openOptions")),
+        "qp-personal": tool("qp-personal", "Create personal ledgers", "fa-solid fa-user-plus quickpay-gold", 6, async () => {
           const n = await createAllPersonal();
           ui.notifications.info(`${n} personal ${n === 1 ? "ledger" : "ledgers"} ready.`);
         }),
-        "qp-creators": tool("qp-creators", "Who can create ledgers", "fa-solid fa-user-gear quickpay-gold", 6, ledgerCreators),
+        "qp-creators": tool("qp-creators", "Who can create ledgers", "fa-solid fa-user-gear quickpay-gold", 7, ledgerCreators),
       },
     };
   });

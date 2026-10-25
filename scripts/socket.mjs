@@ -34,7 +34,7 @@ export function initSocket(getEngine) {
         }
       };
 
-    for (const name of ["request", "requestMany", "accept", "decline", "cancel", "amend", "createLedger"]) socket.register(name, handle(name));
+    for (const name of ["request", "requestMany", "accept", "decline", "cancel", "approve", "deny", "amend", "createLedger"]) socket.register(name, handle(name));
   });
 }
 

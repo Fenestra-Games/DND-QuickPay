@@ -43,8 +43,9 @@ export function entryFromRecord(record, when) {
  *   source and note from them, unless they started it themselves. With no owners there is
  *   nobody to hide anything from (an NPC's ledger is only ever read by the GM).
  */
-export function personalEntryFromRecord(record, side, { when = "", ownerIds = [] } = {}) {
+export function personalEntryFromRecord(record, side, { when = "", ownerIds = [], mask = true } = {}) {
   const hidden =
+    mask &&
     record.visibility === "gm" && ownerIds.length > 0 && !ownerIds.includes(record.initiatedBy);
   const other = side === "in" ? record.sender : record.recipient;
   return {

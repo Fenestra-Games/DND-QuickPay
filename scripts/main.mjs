@@ -6,6 +6,7 @@ import { initSocket, callGM } from "./socket.mjs";
 import { initChat } from "./chat.mjs";
 import { initEntryPoints } from "./ui/entry-points.mjs";
 import { initGMTools } from "./ui/gm-tools.mjs";
+import { worldOptions } from "./options-store.mjs";
 import * as ledger from "./ledger.mjs";
 
 let engine = null;
@@ -67,6 +68,11 @@ Hooks.once("ready", () => {
     accept: (id) => callGM("accept", id),
     decline: (id) => callGM("decline", id),
     cancel: (id) => callGM("cancel", id),
+    /** GM only: approve or deny a request that is waiting for approval. */
+    approve: (id) => callGM("approve", id),
+    deny: (id) => callGM("deny", id),
+    /** Open the options window. */
+    openOptions: async () => (await import("./ui/options-app.mjs")).openOptions(),
     /** Change a transfer after the fact: { ledgerId?: string|null, note?: string }. */
     amend: (id, patch) => callGM("amend", id, patch),
 
@@ -115,7 +121,10 @@ Hooks.once("ready", () => {
   };
 
   // Sweep for expired transfers on load and whenever the world clock moves
-  if (isActiveGM()) getEngine().expireDue();
+  if (isActiveGM()) {
+    getEngine().expireDue();
+    if (worldOptions().autoCreatePersonal) ledger.createAllPersonal().catch((err) => console.error(`${MODULE_ID} | auto-create failed`, err));
+  }
   console.log(`${MODULE_ID} | stage 3b loaded`);
 });
 
