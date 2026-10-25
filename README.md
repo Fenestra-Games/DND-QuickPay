@@ -35,12 +35,13 @@ Install socketlib too, then enable both in your world.
 
 ## Options
 
-Open **Configure Settings, Module Settings, DND QuickPay options** (or the Options entry in a sheet's header menu, or the sliders button in the GM toolbar). Everyone gets a **Me** tab, and GMs get five more.
+Open **Configure Settings, Module Settings, DND QuickPay**. Each section below is its own button on that page, like other modules' settings. Players see **My preferences** and **Public containers**, and GMs see all of them. The Options entry in a sheet's header menu and the sliders button in the GM toolbar open a small window with the same buttons.
 
-- **Me:** your default visibility and ledger, remembering your last recipients, a confirm step before sending, a notice when coins arrive, coins you never want used, and whether your own characters must accept coins.
+- **My preferences:** your default visibility and ledger, remembering your last recipients, a confirm step before sending, a notice when coins arrive, coins you never want used, and whether your own characters must accept coins.
 - **Permissions:** a grid of what players may do. Each row is Allowed, Needs GM approval, or Blocked. A player must always own the actor they pay from, and GMs are never restricted. With Needs GM approval, nothing moves until a GM approves, and the sender can cancel while they wait. Requests expire like pending transfers.
-- **Transfers:** acceptance defaults, whether players may change them, whether GM gifts skip acceptance, expiry hours, the offline GM message, default visibility, the waiting card, a confirm threshold (100 gp by default), a per-transfer cap for players, and the most recipients per send.
+- **Transfers and limits:** acceptance defaults, whether players may change them, whether GM gifts skip acceptance, expiry hours, the offline GM message, default visibility, the waiting card, a confirm threshold (100 gp by default), a per-transfer cap for players, and the most recipients per send.
 - **Ledgers:** who can create them, who can read new ones, personal ledgers on or off, automatic creation, whether GM-only transfers are masked, and who can mark a container public.
+- **Public containers:** tick the containers anyone may send coins to.
 - **Coins:** hide denominations for everyone.
 - **Characters:** per player character, whether they must accept coins and whether they get a personal ledger. NPC personal ledgers are switched on from the console with `game.modules.get("dnd-quickpay").api.ledgers.setPersonal(actorUuid, true)`.
 

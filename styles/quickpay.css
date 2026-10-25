@@ -35,14 +35,25 @@
 .quickpay-public .quickpay-form { display: flex; flex-direction: column; gap: 6px; padding: 8px; }
 .quickpay-public .quickpay-scroll { max-height: 360px; overflow: auto; display: flex; flex-direction: column; gap: 2px; }
 .quickpay-send .window-content, .quickpay-options .window-content, .quickpay-public .window-content { max-height: 80vh; overflow: auto; }
-.quickpay-options .quickpay-form { display: flex; flex-direction: column; gap: 8px; padding: 8px; }
-.quickpay-options .quickpay-tabs { display: flex; flex-wrap: wrap; gap: 4px; }
-.quickpay-options .quickpay-tabs button.active { border-color: #d4a017; box-shadow: 0 0 0 1px #d4a017 inset; }
-.quickpay-options .quickpay-field { display: flex; flex-direction: column; gap: 2px; }
-.quickpay-options .quickpay-field label { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.quickpay-options .quickpay-field select, .quickpay-options .quickpay-field input { flex: 0 0 55%; }
-.quickpay-options .quickpay-check { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.quickpay-options .quickpay-check small { flex-basis: 100%; opacity: 0.75; margin-left: 1.6em; }
-.quickpay-options .quickpay-checks { display: flex; flex-wrap: wrap; gap: 12px; }
-.quickpay-options small { opacity: 0.75; }
-.quickpay-options section[hidden] { display: none; }
+
+/* Options panes: one row per setting, text on the left, control on the right. */
+.quickpay-options .quickpay-pane { display: flex; flex-direction: column; gap: 10px; padding: 10px 12px 12px; line-height: 1.45; letter-spacing: normal; }
+.quickpay-options .quickpay-section { display: flex; flex-direction: column; border: 1px solid var(--color-border-light-tertiary, #8884); border-radius: 6px; padding: 4px 12px 6px; }
+.quickpay-options .quickpay-section h3 { margin: 6px 0 4px; padding: 0 0 4px; border-bottom: 1px solid var(--color-border-light-tertiary, #8884); font-size: 1rem; line-height: 1.3; }
+.quickpay-options .quickpay-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 6px 0; margin: 0; cursor: pointer; }
+.quickpay-options .quickpay-row + .quickpay-row { border-top: 1px solid var(--color-border-light-tertiary, #8882); }
+.quickpay-options .quickpay-row-text { display: flex; flex-direction: column; gap: 2px; flex: 1 1 auto; min-width: 0; }
+.quickpay-options .quickpay-row-label { font-weight: 500; }
+.quickpay-options .quickpay-row small { opacity: 0.75; line-height: 1.35; }
+.quickpay-options .quickpay-row-control { flex: 0 0 auto; display: flex; align-items: center; justify-content: flex-end; }
+.quickpay-options .quickpay-row-control select, .quickpay-options .quickpay-row-control input[type="text"] { width: 12.5rem; }
+.quickpay-options .quickpay-row-control input[type="number"] { width: 6rem; text-align: right; }
+.quickpay-options .quickpay-note-text { margin: 4px 0; opacity: 0.8; }
+.quickpay-options .quickpay-coins { display: flex; flex-wrap: wrap; gap: 6px 18px; padding: 6px 0; }
+.quickpay-options .quickpay-coins label { display: flex; align-items: center; gap: 6px; }
+.quickpay-options .quickpay-table { width: 100%; border-collapse: collapse; }
+.quickpay-options .quickpay-table th, .quickpay-options .quickpay-table td { text-align: left; padding: 6px 8px; }
+.quickpay-options .quickpay-table tr + tr td { border-top: 1px solid var(--color-border-light-tertiary, #8882); }
+.quickpay-options .quickpay-buttons { display: flex; justify-content: flex-end; gap: 8px; }
+.quickpay-options .quickpay-hub { gap: 6px; }
+.quickpay-options .quickpay-hub button { display: flex; align-items: center; gap: 8px; justify-content: flex-start; }

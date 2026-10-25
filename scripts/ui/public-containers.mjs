@@ -3,7 +3,8 @@ import { holdsCurrency } from "../adapters/dnd5e.mjs";
 import { esc } from "../core/format.mjs";
 import { worldOptions } from "../options-store.mjs";
 
-const { ApplicationV2 } = foundry.applications.api;
+// The base class only exists inside Foundry. A stand-in lets the file load in tests.
+const ApplicationV2 = globalThis.foundry?.applications?.api?.ApplicationV2 ?? class {};
 
 /** Container items the current user may flag: owned ones, or every one for a GM. Optionally one actor's only. */
 export function flaggableContainers(user = game.user, actor = null) {

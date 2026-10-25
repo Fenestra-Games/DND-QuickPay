@@ -1,5 +1,6 @@
 import { MODULE_ID, DEFAULT_OFFLINE_MESSAGE } from "./constants.mjs";
-import { OptionsApp } from "./ui/options-app.mjs";
+import { PANE_LIST, PANE_CLASSES } from "./ui/options-app.mjs";
+import { PublicContainers } from "./ui/public-containers.mjs";
 
 export function registerSettings() {
   const reg = (key, data) => game.settings.register(MODULE_ID, key, data);
@@ -32,13 +33,23 @@ export function registerSettings() {
     default: DEFAULT_OFFLINE_MESSAGE,
   });
 
-  // One button in Configure Settings opens the options window (everyone gets their own tab)
-  game.settings.registerMenu(MODULE_ID, "options-menu", {
-    name: "DND QuickPay options",
-    label: "Open options",
-    hint: "Permissions, acceptance, ledgers, limits, coins, and your own preferences.",
-    icon: "fa-solid fa-coins",
-    type: OptionsApp,
+  // Each section is its own button on the module's settings page. GM-only ones are hidden from players.
+  for (const p of PANE_LIST) {
+    game.settings.registerMenu(MODULE_ID, `options-${p.key}`, {
+      name: p.title,
+      label: p.label,
+      hint: p.hint,
+      icon: p.icon,
+      type: PANE_CLASSES[p.key],
+      restricted: p.gmOnly,
+    });
+  }
+  game.settings.registerMenu(MODULE_ID, "options-containers", {
+    name: "Public containers",
+    label: "Public containers",
+    hint: "Tick the containers that anyone may send coins to.",
+    icon: "fa-solid fa-box-open",
+    type: PublicContainers,
     restricted: false,
   });
 }

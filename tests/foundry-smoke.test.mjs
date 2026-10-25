@@ -189,11 +189,43 @@ const as = (user) => { game.user = user; game.userId = user.id; };
 let n = 0;
 const t = async (name, fn) => { await fn(); n++; console.log("ok  ", name); };
 
-await t("the options window is registered as a settings menu for everyone", () => {
-  const m = menus.get("dnd-quickpay.options-menu");
-  assert.ok(m);
-  assert.equal(m.restricted, false);
-  assert.equal(typeof m.type, "function");
+await t("each options pane is its own settings menu, and only the GM panes are restricted", () => {
+  const expected = { me: false, permissions: true, transfers: true, ledgers: true, coins: true, characters: true };
+  for (const [key, gmOnly] of Object.entries(expected)) {
+    const m = menus.get(`dnd-quickpay.options-${key}`);
+    assert.ok(m, `menu ${key} missing`);
+    assert.equal(m.restricted, gmOnly, key);
+    assert.equal(typeof m.type, "function", key);
+  }
+  const c = menus.get("dnd-quickpay.options-containers");
+  assert.ok(c);
+  assert.equal(c.restricted, false);
+  assert.equal(menus.has("dnd-quickpay.options-menu"), false);
+});
+
+await t("every options pane renders for the GM, and players are kept out of GM panes", async () => {
+  const { PANE_CLASSES, PANE_LIST, OptionsHub } = await import("../scripts/ui/options-app.mjs");
+  const fake = () => ({ innerHTML: "", querySelector: () => ({ addEventListener() {} }), querySelectorAll: () => [] });
+  as(game.users.contents.find((u) => u.isGM));
+  for (const p of PANE_LIST) {
+    const c = fake();
+    new PANE_CLASSES[p.key]()._replaceHTML({}, c);
+    assert.match(c.innerHTML, /quickpay-pane/, p.key);
+    assert.doesNotMatch(c.innerHTML, /undefined|\[object/, p.key);
+  }
+  const player = game.users.contents.find((u) => !u.isGM);
+  as(player);
+  const c = fake();
+  new PANE_CLASSES.permissions()._replaceHTML({}, c);
+  assert.match(c.innerHTML, /Only the GM/);
+  const me = fake();
+  new PANE_CLASSES.me()._replaceHTML({}, me);
+  assert.match(me.innerHTML, /My last recipients|Remember my last recipients/);
+  const hub = fake();
+  new OptionsHub()._replaceHTML({}, hub);
+  assert.doesNotMatch(hub.innerHTML, /data-pane="permissions"/);
+  assert.match(hub.innerHTML, /data-pane="me"/);
+  as(game.users.contents.find((u) => u.isGM));
 });
 
 await t("settings register with defaults", () => {
