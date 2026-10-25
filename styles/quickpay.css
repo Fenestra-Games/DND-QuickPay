@@ -16,3 +16,12 @@
 .quickpay-viewer .quickpay-controls { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 6px; }
 .quickpay-viewer .quickpay-controls input[type="search"] { flex: 1 1 140px; }
 .quickpay-viewer .quickpay-scroll { overflow: auto; max-height: 420px; }
+.quickpay-send .quickpay-form { display: flex; flex-direction: column; gap: 6px; padding: 8px; }
+.quickpay-send .quickpay-form label { display: flex; flex-direction: column; gap: 2px; }
+.quickpay-send .quickpay-amounts { display: flex; gap: 6px; }
+.quickpay-send .quickpay-amounts label { flex: 1; }
+.quickpay-send .quickpay-preview { min-height: 1.2em; font-size: 0.9em; }
+.quickpay-send .quickpay-bad { color: #c44; }
+.quickpay-send .quickpay-balance { margin: 0; font-weight: bold; }
+.quickpay-send .quickpay-buttons { display: flex; gap: 6px; }
+.quickpay-send .quickpay-buttons button { flex: 1; }

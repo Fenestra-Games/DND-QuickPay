@@ -2,7 +2,7 @@
 
 A Foundry VTT module for sending coins between players, GMs, actors, and containers. Built for Foundry v14.367+ and dnd5e, with socketlib required. A system adapter layer is in place so other systems can be added later.
 
-**Status:** stage 3a of the build. Transfers now post chat cards, and ledgers (business and personal) are kept as journals. There are no send dialogs or sheet buttons yet, so everything is driven from the console or macros.
+**Status:** stage 3b of the build. Players can send coins from a dialog, opened from the character sheet or the token HUD. The Options menus, predefined targets, public-container flagging, and the permission matrix come in stage 4, so those are still done from the console.
 
 ## Install
 
@@ -19,6 +19,15 @@ Install socketlib too, then enable both in your world.
 - A pending transfer expires after 12 in-world hours (setting), which returns the escrow. It only counts down when the world clock moves, for example on a long rest.
 - Decline, expire, and cancel all return the coins to the sender. A GM can accept, decline, or cancel anything.
 - Players can send from actors they own to any actor, to containers they own, or to containers flagged `dnd-quickpay.publicRecipient = true`. Only GMs can create coins from nowhere (null sender) or remove them (null recipient).
+
+## Sending coins
+
+- **Character sheet:** open the sheet's header menu (the three dots) and choose Send coins. GMs also get Receive coins. Everyone gets Coin ledgers.
+- **Token HUD:** right-click a token you own for a coin button. GMs get a second button to receive.
+- The dialog shows what the sender holds, then a live preview of what will be paid, any change coming back, and what is left. Amount boxes start blank.
+- Players can pick from targeted tokens, tokens they can see on the scene, player characters, their own containers, and public containers. GMs also get every actor and container, plus Nowhere (create or remove coins).
+- Choose who sees it, and optionally tag a ledger, or create a new one if you're allowed to.
+- From a macro: `game.modules.get("dnd-quickpay").api.openSend(actorOrUuid, "send")`.
 
 ## Chat cards
 
@@ -58,7 +67,7 @@ Hooks for other modules: `dnd-quickpay.transferPending`, `dnd-quickpay.transferR
 
 ## Known limits at this stage
 
-- No send dialog or sheet buttons yet.
+- The send dialog and entry points have only been tested against stand-ins. Treat them as new until you've run them in your world.
 - The Foundry-side ledger and chat code is tested against stand-ins only, so treat it as new until you have run it in your world.
 - The pending list and the log live in world settings, so a technical player can read them from the console. The ledger stage moves them to GM-only journals. The log is capped at the latest 2000 transfers until then.
 - The permission rules are fixed defaults. The configurable matrix comes later.

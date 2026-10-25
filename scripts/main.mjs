@@ -4,6 +4,7 @@ import { registerSettings } from "./settings.mjs";
 import { buildEngine } from "./foundry-deps.mjs";
 import { initSocket, callGM } from "./socket.mjs";
 import { initChat } from "./chat.mjs";
+import { initEntryPoints } from "./ui/entry-points.mjs";
 import * as ledger from "./ledger.mjs";
 
 let engine = null;
@@ -20,6 +21,7 @@ Hooks.once("init", () => {
   }
   registerSettings();
   initChat();
+  initEntryPoints();
 });
 
 Hooks.once("ready", () => {
@@ -64,6 +66,9 @@ Hooks.once("ready", () => {
     /** Change a transfer after the fact: { ledgerId?: string|null, note?: string }. */
     amend: (id, patch) => callGM("amend", id, patch),
 
+    /** Open the send dialog for an actor (or UUID). mode: "send" or, for GMs, "receive". */
+    openSend: async (actorOrUuid, mode = "send") => (await import("./ui/send-dialog.mjs")).openSend(actorOrUuid, mode),
+
     ledgers: {
       /** Create a named ledger. Who may is set by the ledgerCreators setting (GM only by default). */
       create: (name, options = {}) => callGM("createLedger", name, options),
@@ -102,7 +107,7 @@ Hooks.once("ready", () => {
 
   // Sweep for expired transfers on load and whenever the world clock moves
   if (isActiveGM()) getEngine().expireDue();
-  console.log(`${MODULE_ID} | stage 3a loaded (chat cards and ledgers, no dialogs yet)`);
+  console.log(`${MODULE_ID} | stage 3b loaded`);
 });
 
 Hooks.on("updateWorldTime", () => {
