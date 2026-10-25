@@ -1,8 +1,8 @@
 import { MODULE_ID } from "./constants.mjs";
 import { getDenominations } from "./adapters/dnd5e.mjs";
 import {
-  resolvedHTML, settledHTML, pendingCardHTML, senderCardHTML,
-  resultAudience, recipientCardAudience, senderCardAudience,
+  resolvedHTML, settledHTML, pendingCardHTML, senderCardHTML, maskedPendingCardHTML, maskedSettledHTML,
+  resultAudience, recipientPrompts, senderCardAudience,
 } from "./core/format.mjs";
 import { nameOfLedger, whenText } from "./ledger.mjs";
 import { callGM } from "./socket.mjs";
@@ -34,17 +34,19 @@ function context(record) {
   };
 }
 
-const post = (content, whisper, transferId, role) =>
+const post = (content, whisper, transferId, role, masked = false) =>
   ChatMessage.create({
     content,
     ...(whisper ? { whisper } : {}),
-    flags: { [MODULE_ID]: { transferId, role } },
+    flags: { [MODULE_ID]: { transferId, role, masked } },
   });
 
 async function onPending(record) {
   try {
     const ctx = context(record);
-    await post(pendingCardHTML(record, ctx), recipientCardAudience(ctx), record.id, "pending");
+    for (const { to, masked } of recipientPrompts(record, ctx)) {
+      await post(masked ? maskedPendingCardHTML(record, ctx) : pendingCardHTML(record, ctx), to, record.id, "pending", masked);
+    }
     const senderTo = senderCardAudience(record, ctx);
     if (senderTo) await post(senderCardHTML(record, ctx), senderTo, record.id, "pending");
   } catch (err) {
@@ -59,7 +61,7 @@ async function onResolved(record) {
     const open = game.messages.filter(
       (m) => m.getFlag(MODULE_ID, "transferId") === record.id && m.getFlag(MODULE_ID, "role") === "pending",
     );
-    for (const m of open) await m.update({ content: settledHTML(record, ctx), "flags.dnd-quickpay.role": "settled" });
+    for (const m of open) await m.update({ content: m.getFlag(MODULE_ID, "masked") ? maskedSettledHTML(record, ctx) : settledHTML(record, ctx), "flags.dnd-quickpay.role": "settled" });
     await post(resolvedHTML(record, ctx), resultAudience(record, ctx), record.id, "result");
   } catch (err) {
     console.error(`${MODULE_ID} | could not post the result card`, err);

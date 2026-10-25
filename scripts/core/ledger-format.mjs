@@ -58,6 +58,8 @@ export function personalEntryFromRecord(record, side, { when = "", ownerIds = []
     direction: side,
     hidden,
     counterparty: hidden ? null : other?.name ?? null,
+    // for a hidden withdrawal, what was taken from: "actor" (their pocket) or "container" (named)
+    takenFrom: hidden && side === "out" ? (String(record.sender?.uuid ?? "").includes(".Item.") ? record.sender?.name ?? "" : "") : "",
     amount: { ...record.amount },
     note: hidden ? "" : record.note ?? "",
     by: hidden ? "" : record.initiatedByName ?? "",
@@ -67,12 +69,15 @@ export function personalEntryFromRecord(record, side, { when = "", ownerIds = []
 /** "Deposit", "Withdrawal", "Unknown deposit" or "Unknown withdrawal" (personal entries). */
 export function entryLabel(e) {
   const base = e.direction === "in" ? "deposit" : "withdrawal";
-  const text = e.hidden ? `Unknown ${base}` : e.direction === "in" ? "Deposit" : "Withdrawal";
+  const text = e.hidden && e.direction === "out" ? "Pickpocketed" : e.hidden ? `Unknown ${base}` : e.direction === "in" ? "Deposit" : "Withdrawal";
   return text;
 }
 
 /** Who the other side was, in words. */
 export function counterpartyText(e) {
+  if (e.hidden && e.direction === "out") {
+    return e.takenFrom ? `The GM has picked ${e.takenFrom}` : "The GM has picked your pocket";
+  }
   if (e.hidden) return "Unknown";
   if (e.counterparty) return e.counterparty;
   return e.direction === "in" ? "The GM" : "Removed by the GM";

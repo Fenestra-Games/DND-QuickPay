@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import {
   esc, resolvedLine, resolvedHTML, settledHTML, pendingCardHTML, senderCardHTML,
-  resultAudience, recipientCardAudience, senderCardAudience,
+  resultAudience, recipientCardAudience, senderCardAudience, maskedPendingCardHTML, maskedSettledHTML, recipientPrompts,
 } from "../scripts/core/format.mjs";
 import {
   entryFromRecord, filterEntries, partyNames, rowsHTML, tableHTML,
@@ -199,6 +199,28 @@ t("personal entry: GM-only transfer is masked for the player, not for the GM or 
   const own = personalEntryFromRecord(rec({ visibility: "gm", initiatedBy: "ben" }), "out", { ownerIds: ["ben"] });
   assert.equal(own.hidden, false, "a player always sees what they did themselves");
   assert.equal(personalEntryFromRecord(rec({ visibility: "gm-recipient" }), "in", { ownerIds: ["ben"] }).hidden, false);
+});
+
+t("hidden withdrawals read as a pickpocket", () => {
+  const e = personalEntryFromRecord(rec({ visibility: "gm", initiatedBy: "gm1", recipient: null }), "out", { ownerIds: ["ana"] });
+  assert.equal(entryLabel(e), "Pickpocketed");
+  assert.equal(counterpartyText(e), "The GM has picked your pocket");
+  const c = personalEntryFromRecord(rec({ visibility: "gm", initiatedBy: "gm1", recipient: null, sender: { uuid: "Actor.A.Item.x", name: "Ana: Purse" } }), "out", { ownerIds: ["ana"] });
+  assert.equal(counterpartyText(c), "The GM has picked Ana: Purse");
+});
+
+t("masked prompts hide sender, note and ledger, and settle without revealing them", () => {
+  const r = rec({ status: "pending", visibility: "gm", initiatedBy: "gm1", note: "secret", ledgerId: "L1" });
+  const html = maskedPendingCardHTML(r, ctx);
+  assert.ok(!html.includes("Ana") && !html.includes("secret") && !html.includes("Ledger"));
+  assert.match(html, /data-quickpay-action="accept"/);
+  assert.doesNotMatch(html, /cancel/);
+  const done = maskedSettledHTML({ ...r, status: "completed" }, ctx);
+  assert.ok(!done.includes("Ana") && !done.includes("secret"));
+  const prompts = recipientPrompts(r, ctx);
+  assert.deepEqual(prompts.map((p) => p.masked), [false, true]);
+  assert.deepEqual(prompts[1].to, ["ben"]);
+  assert.deepEqual(recipientPrompts({ ...r, visibility: "public" }, ctx), [{ to: ["gm1", "gm2", "ben"], masked: false }]);
 });
 
 t("personal entry: GM mint and remove read sensibly", () => {

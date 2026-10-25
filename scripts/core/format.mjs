@@ -66,6 +66,25 @@ export function settledHTML(r, ctx) {
   return `<div class="quickpay-card quickpay-settled quickpay-${esc(r.status)}">${resolvedLine(r, ctx)}</div>`;
 }
 
+/** Prompt for a recipient's owners when the transfer is GM-only: no sender, no note, no ledger. */
+export function maskedPendingCardHTML(r, ctx) {
+  return (
+    `<div class="quickpay-card quickpay-pending">` +
+    `Someone wants to give ${b(r.recipient?.name)} ${amt(r, ctx)}.` +
+    (ctx.expiresText ? `<div class="quickpay-expiry">Expires ${esc(ctx.expiresText)}</div>` : "") +
+    `<div class="quickpay-buttons">` +
+    button("accept", r.id, "Accept") +
+    button("decline", r.id, "Decline") +
+    `</div></div>`
+  );
+}
+
+/** What a masked prompt turns into once the transfer has ended. */
+export function maskedSettledHTML(r, ctx) {
+  const word = { completed: "was accepted", declined: "was declined", expired: "expired", cancelled: "was cancelled" }[r.status] ?? esc(r.status);
+  return `<div class="quickpay-card quickpay-settled quickpay-${esc(r.status)}">The transfer of ${amt(r, ctx)} to ${b(r.recipient?.name)} ${word}.</div>`;
+}
+
 /** Card shown to the recipient's owners and the GM when acceptance is needed. */
 export function pendingCardHTML(r, ctx) {
   const from = r.sender?.name ?? "The GM";
@@ -102,6 +121,18 @@ export function resultAudience(r, ctx) {
   if (r.visibility === "gm") return uniq([...ctx.gmIds, r.initiatedBy]);
   if (r.visibility === "gm-recipient") return uniq([...ctx.gmIds, r.initiatedBy, ...ctx.recipientOwnerIds]);
   return null;
+}
+
+/**
+ * The acceptance prompts to post: [{ to: [userIds], masked }]. GM-only transfers show the
+ * recipient's owners a masked prompt (except one who started it) and the GMs the full one.
+ */
+export function recipientPrompts(r, ctx) {
+  if (r.visibility !== "gm") return [{ to: recipientCardAudience(ctx), masked: false }];
+  const owners = ctx.recipientOwnerIds.filter((id) => id !== r.initiatedBy);
+  const out = [{ to: uniq([...ctx.gmIds, ...ctx.recipientOwnerIds.filter((id) => id === r.initiatedBy)]), masked: false }];
+  if (owners.length) out.push({ to: owners, masked: true });
+  return out;
 }
 
 /** Whisper list for the acceptance prompt. Always the recipient's owners plus GMs. */

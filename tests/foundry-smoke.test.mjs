@@ -334,14 +334,19 @@ await t("chat: a pending transfer prompts the recipient and shows the sender a w
   const r = await api.request({ senderUuid: "Actor.A", recipientUuid: "Actor.B", amount: { gp: 1 }, visibility: "gm" });
   assert.equal(r.status, "pending");
   const prompts = messages.filter((m) => m.flags["dnd-quickpay"].role === "pending");
-  assert.equal(prompts.length, 2);
-  const forRecipient = prompts.find((m) => m.content.includes('data-quickpay-action="accept"'));
-  assert.deepEqual([...forRecipient.whisper].sort(), ["ben", "gm"]);
+  assert.equal(prompts.length, 3, "full prompt for the GM, masked for Ben, waiting card for Ana");
+  const forGM = prompts.find((m) => m.content.includes('data-quickpay-action="accept"') && !m.flags["dnd-quickpay"].masked);
+  assert.deepEqual(forGM.whisper, ["gm"]);
+  const forBen = prompts.find((m) => m.flags["dnd-quickpay"].masked);
+  assert.deepEqual(forBen.whisper, ["ben"]);
+  assert.match(forBen.content, /Someone wants to give/);
+  assert.ok(!forBen.content.includes("Ana"), "the masked prompt must not name the sender");
   const forSender = prompts.find((m) => m.content.includes("Waiting for"));
   assert.deepEqual(forSender.whisper, ["ana"]);
   as(ben);
   await api.accept(r.record.id);
   assert.ok(prompts.every((m) => m.flags["dnd-quickpay"].role === "settled" && !m.content.includes("<button")));
+  assert.ok(!forBen.content.includes("Ana"), "still masked after it settles");
   const result = messages.find((m) => m.flags["dnd-quickpay"].role === "result");
   assert.deepEqual([...result.whisper].sort(), ["ana", "gm"], "GM only visibility reaches the GM and the sender");
 });
@@ -383,6 +388,18 @@ await t("personal ledgers: money in and out, and GM-only deposits are anonymous 
   const e2 = jB.flags["dnd-quickpay"].ledger.entries.find((e) => e.id === ordinary.record.id);
   assert.equal(e2.hidden, false);
   assert.equal(e2.note, "wages");
+});
+
+await t("personal ledgers: a GM removing coins reads as a pickpocket (actor and container)", async () => {
+  as(gm);
+  const pocket = await api.request({ senderUuid: "Actor.B", recipientUuid: null, amount: { gp: 1 }, visibility: "gm" });
+  assert.equal(pocket.status, "completed");
+  const jB = journals.find((j) => j.name === "B (QuickPay ledger)");
+  assert.match(jB.pages.contents[0].text.content, /The GM has picked your pocket/);
+  const bag = makeContainer(B, "bag", {}, { gp: 5 });
+  const r2 = await api.request({ senderUuid: bag.uuid, recipientUuid: null, amount: { gp: 1 }, visibility: "gm" });
+  assert.equal(r2.status, "completed");
+  assert.match(jB.pages.contents[0].text.content, /The GM has picked B: bag/);
 });
 
 await t("personal ledgers: NPCs opt in individually", async () => {
