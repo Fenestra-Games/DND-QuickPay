@@ -10,12 +10,20 @@ globalThis.CONFIG = { DND5E: { currencies: { gp: { conversion: 1 }, sp: { conver
 
 const mkUser = (id, isGM) => ({ id, isGM });
 const gm = mkUser("gm", true), ana = mkUser("ana", false), ben = mkUser("ben", false);
-globalThis.game = { users: { contents: [gm, ana, ben] }, user: ana, actors: [], items: [] };
+class FakeCollection {
+  constructor() { this.contents = []; }
+  filter(fn) { return this.contents.filter(fn); }
+  find(fn) { return this.contents.find(fn); }
+  map(fn) { return this.contents.map(fn); }
+  get size() { return this.contents.length; }
+  push(x) { this.contents.push(x); }
+}
+globalThis.game = { users: { contents: [gm, ana, ben] }, user: ana, actors: new FakeCollection(), items: new FakeCollection() };
 
 const mkActor = (id, type, owners, tokenVisible = null) => {
   const a = {
     documentName: "Actor", id, name: id, type, uuid: `Actor.${id}`, system: { currency: { gp: 0, sp: 0 } },
-    testUserPermission: (u) => u.isGM || owners.includes(u.id), getFlag: () => undefined, items: [],
+    testUserPermission: (u) => u.isGM || owners.includes(u.id), getFlag: () => undefined, items: new FakeCollection(),
   };
   game.actors.push(a);
   return a;
@@ -28,7 +36,6 @@ const mkContainer = (actor, id, pub = false) => {
   actor.items.push(c);
   return c;
 };
-game.actors.filter = Array.prototype.filter.bind(game.actors);
 const A = mkActor("A", "character", ["ana"]);
 const B = mkActor("B", "character", ["ben"]);
 const Guard = mkActor("Guard", "npc", []);
@@ -38,9 +45,6 @@ const myBag = mkContainer(A, "bag");
 const jar = mkContainer(Guard, "jar", true);
 mkContainer(Vault, "safe");
 mkContainer(B, "benbag");
-game.actors.flatMap = Array.prototype.flatMap.bind(game.actors);
-for (const a of game.actors) a.items.filter = Array.prototype.filter.bind(a.items);
-game.items.filter = Array.prototype.filter.bind(game.items);
 
 globalThis.canvas = {
   tokens: { placeables: [

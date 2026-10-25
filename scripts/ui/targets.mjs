@@ -6,7 +6,7 @@ export const NOWHERE = "__nowhere__";
 const isPlayerCharacter = (a) =>
   a.type === "character" && game.users.contents.some((u) => !u.isGM && a.testUserPermission(u, "OWNER"));
 
-const containersOf = (actor) => actor.items.filter((i) => i.type === "container" && holdsCurrency(i));
+const containersOf = (actor) => actor.items.contents.filter((i) => i.type === "container" && holdsCurrency(i));
 const containerName = (c) => (c.parent ? `${c.parent.name}: ${c.name}` : c.name);
 
 /**
@@ -46,20 +46,21 @@ export function buildTargets(user, excludeUuid, { nowhereLabel = null } = {}) {
     .filter(usable);
   group("Tokens on this scene", onScene, actorName);
 
-  group("Player characters", game.actors.filter((a) => isPlayerCharacter(a)), actorName);
+  const actors = game.actors.contents;
+  group("Player characters", actors.filter((a) => isPlayerCharacter(a)), actorName);
 
-  const owned = game.actors.filter((a) => a.testUserPermission(user, "OWNER"));
+  const owned = actors.filter((a) => a.testUserPermission(user, "OWNER"));
   group("Your containers", owned.flatMap(containersOf), containerName);
 
   const publicContainers = [
-    ...game.actors.flatMap(containersOf),
-    ...game.items.filter((i) => i.type === "container" && holdsCurrency(i)),
+    ...actors.flatMap(containersOf),
+    ...game.items.contents.filter((i) => i.type === "container" && holdsCurrency(i)),
   ].filter((c) => c.getFlag(MODULE_ID, FLAGS.publicRecipient) === true);
   group("Public containers", publicContainers, containerName);
 
   if (user.isGM) {
-    group("All actors", game.actors.filter(usable), actorName);
-    group("All containers", game.actors.flatMap(containersOf), containerName);
+    group("All actors", actors.filter(usable), actorName);
+    group("All containers", actors.flatMap(containersOf), containerName);
   }
   return groups;
 }
