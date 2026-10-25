@@ -442,6 +442,24 @@ await t("business ledgers: GM only by default, tagged transfers land in them, am
   assert.equal(api.ledgers.read(made.id).entries.length, 0);
 });
 
+await t("sending to several recipients goes through the socket as separate transfers", async () => {
+  as(gm);
+  await api.request({ senderUuid: null, recipientUuid: "Actor.A", amount: { gp: 20 } });
+  await api.accept((api.pending().find((p) => p.recipient.uuid === "Actor.A") ?? {}).id ?? "none");
+  as(ana);
+  A.system.currency.gp = Math.max(A.system.currency.gp, 20);
+  const before = A.system.currency.gp;
+  messages.length = 0;
+  const r = await api.requestMany({ senderUuid: "Actor.A", amount: { gp: 2 }, note: "round the table" }, ["Actor.NPC", jar.uuid]);
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.equal(r.done, 2);
+  assert.equal(A.system.currency.gp, before - 4);
+  assert.equal(messages.filter((m) => m.flags["dnd-quickpay"].role === "result").length, 2);
+  const bad = await api.requestMany({ senderUuid: "Actor.A", amount: { gp: 1 } }, ["Actor.NPC", secret.uuid]);
+  assert.equal(bad.ok, false);
+  assert.equal(A.system.currency.gp, before - 4, "nothing moved when one recipient was refused");
+});
+
 await t("business ledger reading is refused to non-observers", async () => {
   const j = journals.find((x) => x.name === "Jims Pickles");
   as(eve);

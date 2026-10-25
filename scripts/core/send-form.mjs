@@ -33,12 +33,16 @@ export function balanceText(balance, denoms) {
  * @param {object} balance the payer's current balance
  * @returns {{ok:boolean, lines:string[]}}
  */
-export function previewLines(plan, balance, denoms) {
+export function previewLines(plan, balance, denoms, { count = 1, each = null } = {}) {
   if (!plan?.ok) return { ok: false, lines: [plan?.reason ?? "That amount can't be paid."] };
   const lines = [`Pays ${formatAmount(plan.spend, denoms)}`];
   const hasChange = Object.values(plan.change ?? {}).some((n) => n > 0);
   if (hasChange) lines.push(`Change back: ${formatAmount(plan.change, denoms)}`);
-  lines.push(`Recipient gets ${formatAmount(plan.receive, denoms)}`);
+  lines.push(
+    count > 1
+      ? `Each of ${count} recipients gets ${formatAmount(each ?? plan.receive, denoms)}`
+      : `Recipient gets ${formatAmount(plan.receive, denoms)}`,
+  );
   const after = applyDelta(balance, plan.delta);
   if (after) lines.push(`Left afterwards: ${formatAmount(after, denoms)}`);
   return { ok: true, lines };
@@ -54,4 +58,17 @@ export function resultMessage(res, recipientName = "the recipient") {
   if (!res?.ok) return { type: "warn", text: res?.error ?? "That didn't work." };
   if (res.status === "pending") return { type: "info", text: `Waiting for ${recipientName} to accept.` };
   return { type: "info", text: "Done." };
+}
+
+/** The amount multiplied for a number of recipients. */
+export function scaleAmount(amount, count) {
+  return Object.fromEntries(Object.entries(amount).map(([k, n]) => [k, n * count]));
+}
+
+/** One sentence after a send to several recipients. */
+export function resultManyMessage(res) {
+  if (!res?.ok) return { type: "warn", text: res?.error ?? "That didn't work." };
+  const waiting = (res.results ?? []).filter((r) => r.status === "pending").length;
+  const text = `Sent to ${res.done} ${res.done === 1 ? "recipient" : "recipients"}.${waiting ? ` ${waiting} waiting for acceptance.` : ""}`;
+  return { type: "info", text };
 }

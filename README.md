@@ -2,7 +2,7 @@
 
 A Foundry VTT module for sending coins between players, GMs, actors, and containers. Built for Foundry v14.367+ and dnd5e, with socketlib required. A system adapter layer is in place so other systems can be added later.
 
-**Status:** stage 3b of the build. Players can send coins from a dialog, opened from the character sheet or the token HUD. The Options menus, predefined targets, public-container flagging, and the permission matrix come in stage 4, so those are still done from the console.
+**Status:** stage 3b of the build, plus the GM toolbar. Players can send coins from a dialog, opened from the character sheet or the token HUD. The player Options menu, predefined targets, and the configurable permission matrix come in stage 4.
 
 ## Install
 
@@ -22,12 +22,16 @@ Install socketlib too, then enable both in your world.
 
 ## Sending coins
 
-- **Character sheet:** open the sheet's header menu (the three dots) and choose Send coins. GMs also get Receive coins. Everyone gets Coin ledgers.
-- **Token HUD:** right-click a token you own for a coin button. GMs get a second button to receive.
+- **Character sheet:** open the sheet's header menu (the three dots) and choose Send coins. GMs also get Receive coins. Everyone gets Coin ledgers, and Public containers if the character has a container.
+- **Token HUD:** right-click a token you own. The coin buttons are in the left column. GMs get a second button to receive.
+- **GM toolbar:** GMs get a DND QuickPay group in the scene controls with Send, Receive, Ledgers, Public containers, Create personal ledgers, and Who can create ledgers.
 - The dialog shows what the sender holds, then a live preview of what will be paid, any change coming back, and what is left. Amount boxes start blank.
-- Players can pick from targeted tokens, tokens they can see on the scene, player characters, their own containers, and public containers. GMs also get every actor and container, plus Nowhere (create or remove coins).
-- Choose who sees it, and optionally tag a ledger, or create a new one if you're allowed to.
-- From a macro: `game.modules.get("dnd-quickpay").api.openSend(actorOrUuid, "send")`.
+- **Targets prefill:** anything you have targeted on the canvas is already chosen as a recipient when the dialog opens.
+- **Pick on the scene:** the crosshair button hides the dialog so you can click tokens. Right-click, Enter, or Escape finishes. Players can only pick tokens they can see.
+- **Several recipients:** add as many as you like (up to 25). Each gets the full amount as its own transfer, with its own chat card and its own acceptance. The module checks that the sender can cover the whole total and that every recipient is allowed before any coin moves.
+- Players can choose from targeted tokens, tokens they can see on the scene, player characters, their own containers, and public containers. GMs also get every actor and container, plus Nowhere (create or remove coins).
+- **Public containers:** tick a container in the Public containers window and any player can send coins to it. Owners can tick their own, and GMs can tick any.
+- From a macro: `game.modules.get("dnd-quickpay").api.openSend()` opens the dialog for your selected token, or your own character if nothing is selected. To receive as a GM: `game.modules.get("dnd-quickpay").api.openSend(canvas.tokens.controlled[0].actor, "receive")`.
 
 ## Chat cards
 

@@ -25,3 +25,12 @@
 .quickpay-send .quickpay-balance { margin: 0; font-weight: bold; }
 .quickpay-send .quickpay-buttons { display: flex; gap: 6px; }
 .quickpay-send .quickpay-buttons button { flex: 1; }
+.quickpay-gold { color: #d4a017; }
+.quickpay-send .quickpay-who { display: flex; gap: 6px; align-items: center; }
+.quickpay-send .quickpay-who select { flex: 1; }
+.quickpay-send .quickpay-pick { flex: 0 0 auto; width: 2.2em; }
+.quickpay-send .quickpay-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.quickpay-send .quickpay-chip { display: inline-flex; align-items: center; gap: 4px; padding: 1px 6px; border: 1px solid #d4a017; border-radius: 12px; }
+.quickpay-send .quickpay-chip button { all: unset; cursor: pointer; padding: 0 2px; }
+.quickpay-public .quickpay-form { display: flex; flex-direction: column; gap: 6px; padding: 8px; }
+.quickpay-public .quickpay-scroll { max-height: 360px; overflow: auto; display: flex; flex-direction: column; gap: 2px; }

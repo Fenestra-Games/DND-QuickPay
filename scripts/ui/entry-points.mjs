@@ -13,21 +13,29 @@ export function initEntryPoints() {
     const actor = app.document;
     if (!usableFor(actor) || controls.some((c) => c.action === "quickpay-send")) return;
     controls.push({
-      icon: "fa-solid fa-coins",
+      icon: "fa-solid fa-coins quickpay-gold",
       label: "Send coins",
       action: "quickpay-send",
       onClick: () => send(actor, "send"),
     });
     if (game.user.isGM) {
       controls.push({
-        icon: "fa-solid fa-hand-holding-dollar",
+        icon: "fa-solid fa-hand-holding-dollar quickpay-gold",
         label: "Receive coins",
         action: "quickpay-receive",
         onClick: () => send(actor, "receive"),
       });
     }
+    if (actor.items.contents.some((i) => i.type === "container")) {
+      controls.push({
+        icon: "fa-solid fa-box-open quickpay-gold",
+        label: "Public containers",
+        action: "quickpay-containers",
+        onClick: async () => (await import("./public-containers.mjs")).openPublicContainers(actor),
+      });
+    }
     controls.push({
-      icon: "fa-solid fa-book",
+      icon: "fa-solid fa-book quickpay-gold",
       label: "Coin ledgers",
       action: "quickpay-ledgers",
       onClick: () => viewer(),
@@ -45,7 +53,7 @@ export function initEntryPoints() {
       b.dataset.quickpay = mode;
       b.dataset.tooltip = tip;
       b.setAttribute("aria-label", tip);
-      b.innerHTML = `<i class="${icon}" inert></i>`;
+      b.innerHTML = `<i class="${icon} quickpay-gold" inert></i>`;
       b.addEventListener("click", (ev) => {
         ev.preventDefault();
         ev.stopPropagation();
@@ -53,7 +61,7 @@ export function initEntryPoints() {
       });
       return b;
     };
-    const col = root.querySelector(".col.right") ?? root;
+    const col = root.querySelector(".col.left") ?? root;
     col.append(make("send", "fa-solid fa-coins", "Send coins"));
     if (game.user.isGM) col.append(make("receive", "fa-solid fa-hand-holding-dollar", "Receive coins"));
   });

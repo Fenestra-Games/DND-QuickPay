@@ -1,25 +1,28 @@
 import { MODULE_ID } from "../constants.mjs";
-import { getDenominations, getBalance, quote } from "../adapters/dnd5e.mjs";
+import { getDenominations, getBalance, quote, holdsCurrency } from "../adapters/dnd5e.mjs";
 import { esc } from "../core/format.mjs";
-import { parseAmounts, balanceText, previewLines, mintLines, resultMessage } from "../core/send-form.mjs";
+import {
+  parseAmounts, balanceText, previewLines, mintLines, scaleAmount, resultMessage, resultManyMessage,
+} from "../core/send-form.mjs";
 import { callGM } from "../socket.mjs";
 import { canCreate, listLedgers } from "../ledger.mjs";
 import { buildTargets, NOWHERE } from "./targets.mjs";
+import { pickTokens } from "./pick.mjs";
 
 const { ApplicationV2 } = foundry.applications.api;
 const NEW_LEDGER = "__new__";
 
 /**
- * Send or receive coins. mode "send": the fixed actor pays and you pick who gets it.
- * mode "receive" (GM only): the fixed actor is paid and you pick where it comes from.
+ * Send or receive coins. mode "send": the fixed actor pays and you pick one or more
+ * recipients. mode "receive" (GM only): the fixed actor is paid and you pick one source.
  */
 export class SendDialog extends ApplicationV2 {
   static DEFAULT_OPTIONS = {
     id: "dnd-quickpay-send",
     classes: ["dnd-quickpay", "quickpay-send"],
     tag: "div",
-    window: { title: "QuickPay", resizable: false },
-    position: { width: 420, height: "auto" },
+    window: { title: "QuickPay", icon: "fa-solid fa-coins quickpay-gold", resizable: false },
+    position: { width: 440, height: "auto" },
   };
 
   constructor(actor, { mode = "send", ...options } = {}) {
@@ -27,6 +30,8 @@ export class SendDialog extends ApplicationV2 {
     this.actor = actor;
     this.mode = mode === "receive" && game.user.isGM ? "receive" : "send";
     this.busy = false;
+    this.picking = false;
+    this.selected = []; // [{ uuid, name }]
     this._built = false;
   }
 
@@ -36,6 +41,10 @@ export class SendDialog extends ApplicationV2 {
 
   get hidden() {
     return game.settings.get(MODULE_ID, "hiddenDenominations")?.list ?? [];
+  }
+
+  get multi() {
+    return this.mode === "send";
   }
 
   async _renderHTML() {
@@ -50,7 +59,8 @@ export class SendDialog extends ApplicationV2 {
     const targets = buildTargets(game.user, this.actor.uuid, {
       nowhereLabel: game.user.isGM ? (receive ? "Nowhere (create new coins)" : "Nowhere (remove coins from play)") : null,
     });
-    const otherOptions = targets
+    this._names = new Map(targets.flatMap((g) => g.items.map((i) => [i.uuid, i.name])));
+    const addOptions = targets
       .map((g) => `<optgroup label="${esc(g.label)}">${g.items.map((i) => `<option value="${esc(i.uuid)}">${esc(i.name)}</option>`).join("")}</optgroup>`)
       .join("");
     const ledgers = listLedgers();
@@ -62,7 +72,10 @@ export class SendDialog extends ApplicationV2 {
     content.innerHTML =
       `<div class="quickpay-form">` +
       `<p class="quickpay-balance"></p>` +
-      `<label>${receive ? "From" : "To"} <select name="other"><option value="">Choose...</option>${otherOptions}</select></label>` +
+      `<div class="quickpay-who"><span class="quickpay-who-label">${receive ? "From" : "To"}</span>` +
+      `<select name="add"><option value="">${receive ? "Choose a source..." : "Add a recipient..."}</option>${addOptions}</select>` +
+      `<button type="button" class="quickpay-pick" data-qp="pick" title="Pick on the scene" aria-label="Pick on the scene"><i class="fa-solid fa-crosshairs quickpay-gold"></i></button></div>` +
+      `<div class="quickpay-chips"></div>` +
       `<div class="quickpay-amounts">${denoms.map((d) => `<label>${esc(d.abbreviation ?? d.key)} <input type="number" name="amt-${esc(d.key)}" min="0" step="1" inputmode="numeric" placeholder=""></label>`).join("")}</div>` +
       `<label>Note <input type="text" name="note" maxlength="500"></label>` +
       `<label>Who sees it <select name="visibility">` +
@@ -79,11 +92,65 @@ export class SendDialog extends ApplicationV2 {
     q('[name="ledger"]').addEventListener("change", (ev) => {
       q(".quickpay-newledger").hidden = ev.target.value !== NEW_LEDGER;
     });
+    q('[name="add"]').addEventListener("change", (ev) => {
+      const uuid = ev.target.value;
+      ev.target.value = "";
+      if (uuid) this._add({ uuid, name: this._names.get(uuid) ?? uuid });
+    });
+    q(".quickpay-chips").addEventListener("click", (ev) => {
+      const btn = ev.target.closest("[data-remove]");
+      if (!btn) return;
+      this.selected = this.selected.filter((s) => s.uuid !== btn.dataset.remove);
+      this._refresh();
+    });
     content.addEventListener("input", () => this._preview());
     content.addEventListener("change", () => this._preview());
     q('[data-qp="cancel"]').addEventListener("click", () => this.close());
     q('[data-qp="send"]').addEventListener("click", () => this._submit());
+    q('[data-qp="pick"]').addEventListener("click", () => this._pick());
+
+    // Anything targeted on the canvas is a ready-made recipient
+    const targeted = [...(game.user.targets ?? [])]
+      .map((t) => t.actor)
+      .filter((a) => a && holdsCurrency(a) && a.uuid !== this.actor.uuid);
+    for (const a of this.multi ? targeted : targeted.slice(0, 1)) this._add({ uuid: a.uuid, name: a.name }, false);
+    this._refresh();
+  }
+
+  /** Add a recipient (or replace the source when receiving). */
+  _add(entry, refresh = true) {
+    if (!this.multi) this.selected = [entry];
+    else if (!this.selected.some((s) => s.uuid === entry.uuid)) {
+      this.selected.push(entry);
+    }
+    if (refresh) this._refresh();
+  }
+
+  _refresh() {
+    const chips = this._content.querySelector(".quickpay-chips");
+    chips.innerHTML = this.selected
+      .map((s) => `<span class="quickpay-chip">${esc(s.name)}<button type="button" data-remove="${esc(s.uuid)}" aria-label="Remove ${esc(s.name)}">&times;</button></span>`)
+      .join("");
     this._preview();
+  }
+
+  async _pick() {
+    if (this.picking || this.busy) return;
+    if (!canvas?.ready) return ui.notifications.warn("There is no scene to pick from.");
+    this.picking = true;
+    const allow = (t) =>
+      !!t.actor && holdsCurrency(t.actor) && t.actor.uuid !== this.actor.uuid && (game.user.isGM || (t.visible && !t.document?.hidden));
+    try {
+      await this.minimize();
+      await pickTokens({
+        allow,
+        multiple: this.multi,
+        onPick: (a) => this._add({ uuid: a.uuid, name: a.name }),
+      });
+    } finally {
+      this.picking = false;
+      if (this.rendered) await this.maximize();
+    }
   }
 
   _raw() {
@@ -95,7 +162,7 @@ export class SendDialog extends ApplicationV2 {
   /** The document that pays: the fixed actor when sending, the chosen source when receiving. */
   _payer() {
     if (this.mode === "send") return this.actor;
-    const uuid = this._content.querySelector('[name="other"]').value;
+    const uuid = this.selected[0]?.uuid;
     if (!uuid || uuid === NOWHERE) return null;
     try {
       return fromUuidSync(uuid) ?? null;
@@ -121,21 +188,24 @@ export class SendDialog extends ApplicationV2 {
       out.textContent = "";
       return;
     }
-    const res = payer
-      ? previewLines(quote(payer, parsed.amount, { hidden: this.hidden }).plan, getBalance(payer), denoms)
-      : this.mode === "receive" && c.querySelector('[name="other"]').value === NOWHERE
-        ? mintLines(parsed.amount, denoms)
-        : { ok: true, lines: [] };
+    const count = Math.max(1, this.multi ? this.selected.length : 1);
+    let res;
+    if (payer) {
+      const total = scaleAmount(parsed.amount, count);
+      res = previewLines(quote(payer, total, { hidden: this.hidden }).plan, getBalance(payer), denoms, { count, each: parsed.amount });
+    } else if (this.mode === "receive" && this.selected[0]?.uuid === NOWHERE) {
+      res = mintLines(parsed.amount, denoms);
+    } else res = { ok: true, lines: [] };
     out.innerHTML = res.lines.map((l) => `<div class="${res.ok ? "" : "quickpay-bad"}">${esc(l)}</div>`).join("");
   }
 
   async _submit() {
-    if (this.busy) return;
+    if (this.busy || this.picking) return;
     const c = this._content;
     const q = (sel) => c.querySelector(sel);
-    const otherSel = q('[name="other"]');
-    const other = otherSel.value;
-    if (!other) return ui.notifications.warn(this.mode === "receive" ? "Choose where the coins come from." : "Choose who to send to.");
+    if (!this.selected.length) {
+      return ui.notifications.warn(this.mode === "receive" ? "Choose where the coins come from." : "Choose who to send to.");
+    }
     const parsed = parseAmounts(this._raw());
     if (!parsed.ok) return ui.notifications.warn(parsed.error);
     if (parsed.empty) return ui.notifications.warn("Enter an amount.");
@@ -150,21 +220,31 @@ export class SendDialog extends ApplicationV2 {
         if (!made?.ok) return ui.notifications.warn(made?.error ?? "Couldn't create that ledger.");
         ledgerId = made.id;
       }
-      const otherUuid = other === NOWHERE ? null : other;
-      const res = await callGM("request", {
-        senderUuid: this.mode === "send" ? this.actor.uuid : otherUuid,
-        recipientUuid: this.mode === "send" ? otherUuid : this.actor.uuid,
+      const common = {
         amount: parsed.amount,
         note: q('[name="note"]').value,
         visibility: q('[name="visibility"]').value,
         ledgerId,
-      });
-      if (res?.offline) return; // callGM already told the user
-      const recipientName =
-        this.mode === "send" ? otherSel.selectedOptions[0]?.textContent ?? "the recipient" : this.actor.name;
-      const msg = resultMessage(res, recipientName);
+      };
+      const toUuid = (u) => (u === NOWHERE ? null : u);
+
+      let res;
+      let msg;
+      if (this.mode === "receive") {
+        res = await callGM("request", { ...common, senderUuid: toUuid(this.selected[0].uuid), recipientUuid: this.actor.uuid });
+        if (res?.offline) return;
+        msg = resultMessage(res, this.actor.name);
+      } else if (this.selected.length === 1) {
+        res = await callGM("request", { ...common, senderUuid: this.actor.uuid, recipientUuid: toUuid(this.selected[0].uuid) });
+        if (res?.offline) return;
+        msg = resultMessage(res, this.selected[0].name);
+      } else {
+        res = await callGM("requestMany", { ...common, senderUuid: this.actor.uuid }, this.selected.map((s) => toUuid(s.uuid)));
+        if (res?.offline) return;
+        msg = resultManyMessage(res);
+      }
       ui.notifications[msg.type](msg.text);
-      if (res?.ok) this.close();
+      if (res?.ok || res?.done > 0) this.close();
     } finally {
       this.busy = false;
       buttons.forEach((b) => (b.disabled = false));
@@ -172,10 +252,16 @@ export class SendDialog extends ApplicationV2 {
   }
 }
 
-/** Open the dialog for an actor (document or UUID). */
-export async function openSend(actorOrUuid, mode = "send") {
-  const actor = typeof actorOrUuid === "string" ? await fromUuid(actorOrUuid) : actorOrUuid;
-  if (actor?.documentName !== "Actor") return ui.notifications.warn("That isn't an actor.");
+/**
+ * Open the dialog. With no actor it uses the selected token, then your own character.
+ * @param {Actor|string} [actorOrUuid]
+ * @param {"send"|"receive"} [mode]
+ */
+export async function openSend(actorOrUuid = null, mode = "send") {
+  let actor = actorOrUuid;
+  if (typeof actor === "string") actor = await fromUuid(actor);
+  actor ??= canvas?.tokens?.controlled?.[0]?.actor ?? game.user.character ?? null;
+  if (actor?.documentName !== "Actor") return ui.notifications.warn("Select a token first, or pass an actor.");
   if (!game.user.isGM && !actor.testUserPermission(game.user, "OWNER")) {
     return ui.notifications.warn("You can only send coins from an actor you own.");
   }

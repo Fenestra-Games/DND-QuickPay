@@ -670,4 +670,78 @@ await t("amending a note refreshes personal ledgers, but a ledger move alone doe
   assert.deepEqual(w.personalCalls, [["reconcile", r.record.id, "fixed"]]);
 });
 
+// ---- several recipients ------------------------------------------------------
+await t("requestMany: the same amount goes to each recipient as its own transfer", async () => {
+  const w = makeWorld();
+  w.A.bal.gp = 10;
+  const start = w.total();
+  const r = await w.engine.requestMany("ana", { senderUuid: "A", amount: { gp: 2 }, note: "split" }, ["NPC", "Pot", "B"]);
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.equal(r.done, 3);
+  assert.deepEqual(r.results.map((x) => x.status), ["completed", "completed", "pending"]);
+  assert.equal(w.total(), start, "coins are conserved, with B's share in escrow");
+  assert.equal(w.A.bal.gp, 4);
+  assert.equal(w.log.length, 2);
+  assert.equal(Object.keys(w.getPending()).length, 1);
+});
+
+await t("requestMany: if the sender can't cover the total, nothing moves", async () => {
+  const w = makeWorld();
+  w.A.bal.gp = 3;
+  const r = await w.engine.requestMany("ana", { senderUuid: "A", amount: { gp: 2 } }, ["NPC", "Pot"]);
+  assert.equal(r.ok, false);
+  assert.match(r.error, /Not enough coin/);
+  assert.equal(w.A.bal.gp, 3);
+  assert.equal(w.log.length, 0);
+});
+
+await t("requestMany: one ineligible recipient stops the whole batch before any coin moves", async () => {
+  const w = makeWorld();
+  w.A.bal.gp = 10;
+  const r = await w.engine.requestMany("ana", { senderUuid: "A", amount: { gp: 1 } }, ["NPC", "Locked", "Pot"]);
+  assert.equal(r.ok, false);
+  assert.match(r.error, /Locked/);
+  assert.equal(w.A.bal.gp, 10);
+  assert.equal(w.log.length, 0);
+  assert.equal(Object.keys(w.getPending()).length, 0);
+});
+
+await t("requestMany: duplicates are sent once, empty lists and huge lists are refused", async () => {
+  const w = makeWorld();
+  w.A.bal.gp = 10;
+  const r = await w.engine.requestMany("ana", { senderUuid: "A", amount: { gp: 1 } }, ["NPC", "NPC"]);
+  assert.equal(r.done, 1);
+  assert.equal(w.A.bal.gp, 9);
+  assert.equal((await w.engine.requestMany("ana", { senderUuid: "A", amount: { gp: 1 } }, [])).ok, false);
+  assert.equal((await w.engine.requestMany("ana", { senderUuid: "A", amount: { gp: 1 } }, "NPC")).ok, false);
+  const many = Array.from({ length: 26 }, (_, i) => `X${i}`);
+  assert.match((await w.engine.requestMany("ana", { senderUuid: "A", amount: { gp: 1 } }, many)).error, /at most 25/);
+});
+
+await t("requestMany: players still can't mint or remove, and can't spend from others", async () => {
+  const w = makeWorld();
+  w.B.bal.gp = 5;
+  assert.equal((await w.engine.requestMany("ana", { senderUuid: null, amount: { gp: 1 } }, ["B"])).ok, false);
+  assert.equal((await w.engine.requestMany("ana", { senderUuid: "A", amount: { gp: 1 } }, [null])).ok, false);
+  assert.equal((await w.engine.requestMany("ana", { senderUuid: "B", amount: { gp: 1 } }, ["NPC"])).ok, false);
+  assert.equal(w.B.bal.gp, 5);
+});
+
+await t("requestMany: a GM can mint to several people", async () => {
+  const w = makeWorld();
+  const r = await w.engine.requestMany("gm", { senderUuid: null, amount: { gp: 3 } }, ["NPC", "Pot"]);
+  assert.equal(r.ok, true);
+  assert.equal(w.NPC.bal.gp, 3);
+  assert.equal(w.Pot.bal.gp, 3);
+});
+
+await t("dry runs never change anything", async () => {
+  const w = makeWorld();
+  w.A.bal.gp = 5;
+  const r = await w.engine.requestMany("ana", { senderUuid: "A", amount: { gp: 6 } }, ["NPC"]);
+  assert.equal(r.ok, false);
+  assert.equal(w.A.bal.gp, 5);
+  assert.deepEqual(w.events, []);
+});
+
 console.log(`\n${n} engine tests passed`);

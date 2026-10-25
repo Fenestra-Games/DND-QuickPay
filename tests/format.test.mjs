@@ -223,6 +223,13 @@ t("masked prompts hide sender, note and ledger, and settle without revealing the
   assert.deepEqual(recipientPrompts({ ...r, visibility: "public" }, ctx), [{ to: ["gm1", "gm2", "ben"], masked: false }]);
 });
 
+t("every card carries the gold coin icon", () => {
+  const r = rec({ status: "pending" });
+  for (const html of [resolvedHTML(r, ctx), settledHTML(r, ctx), pendingCardHTML(r, ctx), senderCardHTML(r, ctx), maskedPendingCardHTML(r, ctx), maskedSettledHTML(r, ctx)]) {
+    assert.match(html, /fa-coins quickpay-gold/);
+  }
+});
+
 t("personal entry: GM mint and remove read sensibly", () => {
   const mint = personalEntryFromRecord(rec({ sender: null }), "in", { ownerIds: ["ben"] });
   assert.equal(counterpartyText(mint), "The GM");

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { parseAmounts, previewLines, mintLines, resultMessage, balanceText } from "../scripts/core/send-form.mjs";
+import { parseAmounts, previewLines, mintLines, resultMessage, balanceText, scaleAmount, resultManyMessage } from "../scripts/core/send-form.mjs";
 import { planPayment } from "../scripts/core/coins.mjs";
 
 const denoms = [
@@ -60,6 +60,21 @@ t("result messages", () => {
   assert.equal(resultMessage({ ok: true, status: "pending" }, "Ben").text, "Waiting for Ben to accept.");
   assert.equal(resultMessage({ ok: true, status: "completed" }).text, "Done.");
   assert.equal(resultMessage(undefined).type, "warn");
+});
+
+t("several recipients: the total is paid and each share is shown", () => {
+  const bal = { gp: 10 };
+  const each = { gp: 2 };
+  const plan = planPayment(bal, scaleAmount(each, 3), denoms);
+  const p = previewLines(plan, bal, denoms, { count: 3, each });
+  assert.deepEqual(p.lines, ["Pays 6 gp", "Each of 3 recipients gets 2 gp", "Left afterwards: 4 gp"]);
+  assert.deepEqual(scaleAmount({ gp: 2, sp: 5 }, 3), { gp: 6, sp: 15 });
+});
+
+t("several recipients: result wording", () => {
+  assert.equal(resultManyMessage({ ok: true, done: 3, results: [{ status: "completed" }, { status: "pending" }, { status: "pending" }] }).text, "Sent to 3 recipients. 2 waiting for acceptance.");
+  assert.equal(resultManyMessage({ ok: true, done: 1, results: [{ status: "completed" }] }).text, "Sent to 1 recipient.");
+  assert.deepEqual(resultManyMessage({ ok: false, error: "No." }), { type: "warn", text: "No." });
 });
 
 console.log(`\n${n} send-form tests passed`);

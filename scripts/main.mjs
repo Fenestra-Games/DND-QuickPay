@@ -5,6 +5,7 @@ import { buildEngine } from "./foundry-deps.mjs";
 import { initSocket, callGM } from "./socket.mjs";
 import { initChat } from "./chat.mjs";
 import { initEntryPoints } from "./ui/entry-points.mjs";
+import { initGMTools } from "./ui/gm-tools.mjs";
 import * as ledger from "./ledger.mjs";
 
 let engine = null;
@@ -22,6 +23,7 @@ Hooks.once("init", () => {
   registerSettings();
   initChat();
   initEntryPoints();
+  initGMTools();
 });
 
 Hooks.once("ready", () => {
@@ -60,14 +62,21 @@ Hooks.once("ready", () => {
      *   A null sender mints coins and a null recipient removes them (GM only).
      */
     request: (input) => callGM("request", input),
+    /** Send the same amount to several recipients: requestMany(input, [uuid, uuid]). */
+    requestMany: (input, recipientUuids) => callGM("requestMany", input, recipientUuids),
     accept: (id) => callGM("accept", id),
     decline: (id) => callGM("decline", id),
     cancel: (id) => callGM("cancel", id),
     /** Change a transfer after the fact: { ledgerId?: string|null, note?: string }. */
     amend: (id, patch) => callGM("amend", id, patch),
 
-    /** Open the send dialog for an actor (or UUID). mode: "send" or, for GMs, "receive". */
-    openSend: async (actorOrUuid, mode = "send") => (await import("./ui/send-dialog.mjs")).openSend(actorOrUuid, mode),
+    /**
+     * Open the send dialog. With no arguments it uses your selected token, or your character.
+     * openSend(actorOrUuid, "send" | "receive")  ("receive" is for GMs)
+     */
+    openSend: async (actorOrUuid = null, mode = "send") => (await import("./ui/send-dialog.mjs")).openSend(actorOrUuid, mode),
+    /** Tick containers that anyone may send coins to. */
+    openPublicContainers: async () => (await import("./ui/public-containers.mjs")).openPublicContainers(),
 
     ledgers: {
       /** Create a named ledger. Who may is set by the ledgerCreators setting (GM only by default). */

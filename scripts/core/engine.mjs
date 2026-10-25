@@ -44,6 +44,7 @@ const NOTE_MAX = 500;
 const LEDGER_NAME_MAX = 60;
 const RECORD_VERSION = 1;
 
+const toCost = (amount, d) => d.reduce((sum, x) => sum + (amount[x.key] ?? 0) * x.value, 0);
 const ok = (extra = {}) => ({ ok: true, ...extra });
 const no = (error, extra = {}) => ({ ok: false, error, ...extra });
 
@@ -142,7 +143,7 @@ export function createEngine(deps) {
   }
 
   // ---- request -------------------------------------------------------------
-  async function doRequest(userId, input) {
+  async function doRequest(userId, input, { dryRun = false } = {}) {
     if (!docs.userExists(userId)) return no("Couldn't identify who made this request.");
     const isGM = docs.isGM(userId);
 
@@ -190,6 +191,8 @@ export function createEngine(deps) {
       if (!norm.ok) return no(norm.reason);
       receive = norm.receive;
     }
+
+    if (dryRun) return ok({ dryRun: true, cost: sender ? toCost(receive, d) : 0 });
 
     const pending = needsAcceptance(userId, recipient);
     const t = now();
@@ -242,6 +245,55 @@ export function createEngine(deps) {
     }
     await finish(record, STATUS.COMPLETED, recipient ? "auto" : "removed", userId, { refunded: null });
     return ok({ status: STATUS.COMPLETED, record });
+  }
+
+  // ---- several recipients ----------------------------------------------------
+  const MANY_MAX = 25;
+
+  /**
+   * Send the same amount to each recipient. Everything that can be checked up front is:
+   * each recipient's permissions, and that the sender can cover the whole total. If all
+   * checks pass, the transfers run one after another as separate transfers. If something
+   * unexpected fails midway, it stops there and reports what already went through.
+   */
+  async function doRequestMany(userId, input, recipientUuids) {
+    if (!input || typeof input !== "object") return no("Invalid request.");
+    if (!Array.isArray(recipientUuids) || !recipientUuids.length) return no("Choose at least one recipient.");
+    const list = [...new Set(recipientUuids.map((u) => (u == null || u === "" ? null : u)))];
+    if (list.length > MANY_MAX) return no(`You can send to at most ${MANY_MAX} recipients at once.`);
+    if (list.some((u) => u !== null && typeof u !== "string")) return no("Invalid target.");
+
+    const base = { ...input };
+    for (const u of list) {
+      const check = await doRequest(userId, { ...base, recipientUuid: u }, { dryRun: true });
+      if (!check.ok) {
+        const who = u ? (await docs.resolve(u)) : null;
+        return no(who ? `${docs.name(who)}: ${check.error}` : check.error);
+      }
+    }
+    // the whole total, not just each share
+    if (list.length > 1 && base.senderUuid) {
+      const sender = await docs.resolve(base.senderUuid);
+      const d = denoms();
+      const norm = normalizeAmount(base.amount, d);
+      if (sender && norm.ok) {
+        const scaled = Object.fromEntries(Object.entries(norm.receive).map(([k, n]) => [k, n * list.length]));
+        const plan = planPayment(coins.getBalance(sender), scaled, d);
+        if (!plan.ok) return no(`Not enough coin to send that to ${list.length} people.`);
+      }
+    }
+
+    const results = [];
+    for (const u of list) {
+      const res = await doRequest(userId, { ...base, recipientUuid: u });
+      results.push({ recipientUuid: u, ok: res.ok, status: res.status ?? null, error: res.error ?? null, record: res.record ?? null });
+      if (!res.ok) break;
+    }
+    const done = results.filter((r) => r.ok).length;
+    if (done < list.length) {
+      return no(`Only ${done} of ${list.length} went through: ${results.at(-1).error}`, { results, done, total: list.length });
+    }
+    return ok({ results, done, total: list.length });
   }
 
   // ---- resolving pending transfers ----------------------------------------
@@ -393,6 +445,7 @@ export function createEngine(deps) {
 
   return {
     request: (userId, input) => serialize(() => doRequest(userId, input)),
+    requestMany: (userId, input, recipientUuids) => serialize(() => doRequestMany(userId, input, recipientUuids)),
     accept: (userId, id) => serialize(() => doAccept(userId, id)),
     decline: (userId, id) => serialize(() => doDecline(userId, id)),
     cancel: (userId, id) => serialize(() => doCancel(userId, id)),

@@ -14,6 +14,7 @@
  */
 import { formatAmount } from "./coins.mjs";
 
+const COIN = '<i class="fa-solid fa-coins quickpay-gold"></i> ';
 const MAP = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
 export const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => MAP[c]);
 
@@ -58,18 +59,18 @@ export function resolvedLine(r, ctx) {
 
 /** The result message posted when a transfer ends. */
 export function resolvedHTML(r, ctx) {
-  return `<div class="quickpay-card quickpay-${esc(r.status)}">${resolvedLine(r, ctx)}${noteHTML(r)}${ledgerHTML(r, ctx)}</div>`;
+  return `<div class="quickpay-card quickpay-${esc(r.status)}">` + COIN + `${resolvedLine(r, ctx)}${noteHTML(r)}${ledgerHTML(r, ctx)}</div>`;
 }
 
 /** What a pending card turns into once the transfer has ended (no buttons). */
 export function settledHTML(r, ctx) {
-  return `<div class="quickpay-card quickpay-settled quickpay-${esc(r.status)}">${resolvedLine(r, ctx)}</div>`;
+  return `<div class="quickpay-card quickpay-settled quickpay-${esc(r.status)}">` + COIN + `${resolvedLine(r, ctx)}</div>`;
 }
 
 /** Prompt for a recipient's owners when the transfer is GM-only: no sender, no note, no ledger. */
 export function maskedPendingCardHTML(r, ctx) {
   return (
-    `<div class="quickpay-card quickpay-pending">` +
+    `<div class="quickpay-card quickpay-pending">` + COIN +
     `Someone wants to give ${b(r.recipient?.name)} ${amt(r, ctx)}.` +
     (ctx.expiresText ? `<div class="quickpay-expiry">Expires ${esc(ctx.expiresText)}</div>` : "") +
     `<div class="quickpay-buttons">` +
@@ -82,14 +83,14 @@ export function maskedPendingCardHTML(r, ctx) {
 /** What a masked prompt turns into once the transfer has ended. */
 export function maskedSettledHTML(r, ctx) {
   const word = { completed: "was accepted", declined: "was declined", expired: "expired", cancelled: "was cancelled" }[r.status] ?? esc(r.status);
-  return `<div class="quickpay-card quickpay-settled quickpay-${esc(r.status)}">The transfer of ${amt(r, ctx)} to ${b(r.recipient?.name)} ${word}.</div>`;
+  return `<div class="quickpay-card quickpay-settled quickpay-${esc(r.status)}">` + COIN + `The transfer of ${amt(r, ctx)} to ${b(r.recipient?.name)} ${word}.</div>`;
 }
 
 /** Card shown to the recipient's owners and the GM when acceptance is needed. */
 export function pendingCardHTML(r, ctx) {
   const from = r.sender?.name ?? "The GM";
   return (
-    `<div class="quickpay-card quickpay-pending">` +
+    `<div class="quickpay-card quickpay-pending">` + COIN +
     `${b(from)} wants to give ${b(r.recipient?.name)} ${amt(r, ctx)}.` +
     noteHTML(r) +
     ledgerHTML(r, ctx) +
@@ -105,7 +106,7 @@ export function pendingCardHTML(r, ctx) {
 /** Card shown to the sender while they wait. */
 export function senderCardHTML(r, ctx) {
   return (
-    `<div class="quickpay-card quickpay-pending">` +
+    `<div class="quickpay-card quickpay-pending">` + COIN +
     `Waiting for ${b(r.recipient?.name)} to accept ${amt(r, ctx)}.` +
     noteHTML(r) +
     (ctx.expiresText ? `<div class="quickpay-expiry">Expires ${esc(ctx.expiresText)}</div>` : "") +

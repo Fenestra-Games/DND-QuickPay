@@ -102,14 +102,14 @@ await t("sheet header: owners get Send and Ledgers, GMs also get Receive, others
     for (const fn of hooks.getHeaderControlsApplicationV2) fn({ document: actor }, controls);
     return controls.map((c) => c.action);
   };
-  assert.deepEqual(run(ana, A), ["quickpay-send", "quickpay-ledgers"]);
-  assert.deepEqual(run(gm, A), ["quickpay-send", "quickpay-receive", "quickpay-ledgers"]);
+  assert.deepEqual(run(ana, A), ["quickpay-send", "quickpay-containers", "quickpay-ledgers"]);
+  assert.deepEqual(run(gm, A), ["quickpay-send", "quickpay-receive", "quickpay-containers", "quickpay-ledgers"]);
   assert.deepEqual(run(ana, B), [], "not your character");
   assert.deepEqual(run(ana, null), []);
   game.user = ana;
   const controls = [];
   for (const fn of hooks.getHeaderControlsApplicationV2) { fn({ document: A }, controls); fn({ document: A }, controls); }
-  assert.equal(controls.length, 2, "no duplicates when the hook runs twice");
+  assert.equal(controls.length, 3, "no duplicates when the hook runs twice");
   assert.ok(controls.every((c) => typeof c.onClick === "function"));
 });
 
@@ -127,7 +127,7 @@ await t("token HUD: buttons only for usable actors, none twice", () => {
     const made = [];
     const col = { append: (b) => made.push(b), };
     const root = new HTMLElementStub();
-    root.querySelector = (sel) => (sel === ".col.right" ? col : sel === "[data-quickpay]" ? (made.length ? made[0] : null) : null);
+    root.querySelector = (sel) => (sel === ".col.left" ? col : sel === "[data-quickpay]" ? (made.length ? made[0] : null) : null);
     return { root, made };
   };
   globalThis.document = { createElement: () => ({ dataset: {}, setAttribute() {}, addEventListener() {}, set innerHTML(v) {} }) };
@@ -145,6 +145,84 @@ await t("token HUD: buttons only for usable actors, none twice", () => {
   ({ root, made } = mkRoot());
   for (const fn of hooks.renderTokenHUD) fn(hud(B), root);
   assert.deepEqual(made.map((b) => b.dataset.quickpay), ["send", "receive"]);
+});
+
+await t("token HUD buttons go in the left column and are gold", () => {
+  const appended = [];
+  const left = { append: (b) => appended.push(["left", b]) };
+  const right = { append: (b) => appended.push(["right", b]) };
+  const root = new HTMLElementStub();
+  root.querySelector = (sel) => (sel === ".col.left" ? left : sel === ".col.right" ? right : null);
+  let html = "";
+  globalThis.document = { createElement: () => ({ dataset: {}, setAttribute() {}, addEventListener() {}, set innerHTML(v) { html += v; } }) };
+  game.user = ana;
+  for (const fn of hooks.renderTokenHUD) fn({ object: { actor: A } }, root);
+  assert.deepEqual(appended.map((a) => a[0]), ["left"]);
+  assert.match(html, /quickpay-gold/);
+});
+
+await t("sheet header icons are gold, and containers add a Public containers entry", () => {
+  game.user = ana;
+  const controls = [];
+  for (const fn of hooks.getHeaderControlsApplicationV2) fn({ document: A }, controls);
+  assert.ok(controls.every((c) => c.icon.includes("quickpay-gold")));
+  assert.ok(controls.some((c) => c.action === "quickpay-containers"), "A has a bag");
+  const noBag = [];
+  for (const fn of hooks.getHeaderControlsApplicationV2) fn({ document: Guard }, noBag);
+  assert.deepEqual(noBag, [], "Guard isn't owned by Ana");
+});
+
+// ---- GM toolbar -----------------------------------------------------------------
+globalThis.foundry = { applications: { api: { ApplicationV2: class {}, DialogV2: {} } } };
+globalThis.ui = { notifications: { warn() {}, info() {} } };
+globalThis.canvas.tokens.controlled = [];
+const { initGMTools } = await import("../scripts/ui/gm-tools.mjs");
+initGMTools();
+
+await t("scene controls: only a GM gets the QuickPay group, with every tool as a button", () => {
+  const run = (user) => { game.user = user; const c = {}; for (const fn of hooks.getSceneControlButtons) fn(c); return c; };
+  assert.deepEqual(run(ana), {});
+  const c = run(gm);
+  assert.ok(c.quickpay);
+  const tools = Object.values(c.quickpay.tools);
+  assert.deepEqual(tools.map((x) => x.name), ["qp-send", "qp-receive", "qp-ledgers", "qp-containers", "qp-personal", "qp-creators"]);
+  assert.ok(tools.every((x) => x.button === true && typeof x.onChange === "function" && x.icon.includes("quickpay-gold")));
+  assert.ok(c.quickpay.icon.includes("quickpay-gold"));
+  assert.ok(Object.keys(c.quickpay.tools).includes(c.quickpay.activeTool));
+});
+
+await t("the send and receive tools ask for a token when none is selected", () => {
+  game.user = gm;
+  const warned = [];
+  ui.notifications.warn = (m) => warned.push(m);
+  const c = {}; for (const fn of hooks.getSceneControlButtons) fn(c);
+  c.quickpay.tools["qp-send"].onChange();
+  c.quickpay.tools["qp-receive"].onChange();
+  assert.deepEqual(warned, ["Select a token first.", "Select a token first."]);
+});
+
+const { tokenAt } = await import("../scripts/ui/pick.mjs");
+const box = (name, x, y) => ({ name, bounds: { x, y, width: 100, height: 100 } });
+
+await t("picking: hit-testing finds the topmost token, including its edges, and misses empty space", () => {
+  const under = box("under", 0, 0);
+  const over = box("over", 50, 50);
+  assert.equal(tokenAt({ x: 75, y: 75 }, [under, over]).name, "over");
+  assert.equal(tokenAt({ x: 25, y: 25 }, [under, over]).name, "under");
+  assert.equal(tokenAt({ x: 100, y: 100 }, [under]).name, "under", "edges count");
+  assert.equal(tokenAt({ x: 101, y: 50 }, [under]), null);
+  assert.equal(tokenAt({ x: 5, y: 5 }, []), null);
+  assert.equal(tokenAt({ x: 5, y: 5 }, [{ name: "no bounds" }]), null);
+});
+
+const { flaggableContainers } = await import("../scripts/ui/public-containers.mjs");
+
+await t("public containers: players see only containers they own, GMs see all", () => {
+  const names = (user) => flaggableContainers(user).map((c) => c.name).sort();
+  assert.deepEqual(names(ana), ["bag"]);
+  assert.deepEqual(names(ben), ["benbag"]);
+  assert.deepEqual(names(gm), ["bag", "benbag", "jar", "safe"]);
+  assert.deepEqual(flaggableContainers(gm, Guard).map((c) => c.name), ["jar"]);
 });
 
 console.log(`\n${n} ui tests passed`);
