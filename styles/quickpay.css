@@ -1,0 +1,18 @@
+.quickpay-card { padding: 4px 6px; border-left: 3px solid var(--color-border-light-tertiary, #888); }
+.quickpay-card.quickpay-completed { border-left-color: #4a8f4a; }
+.quickpay-card.quickpay-pending { border-left-color: #c9a227; }
+.quickpay-card.quickpay-declined,
+.quickpay-card.quickpay-cancelled,
+.quickpay-card.quickpay-expired { border-left-color: #a33; }
+.quickpay-card.quickpay-settled { opacity: 0.8; }
+.quickpay-note { font-style: italic; margin-top: 2px; }
+.quickpay-ledger, .quickpay-expiry { font-size: 0.85em; opacity: 0.8; }
+.quickpay-buttons { display: flex; gap: 4px; margin-top: 4px; }
+.quickpay-btn { flex: 1; }
+.quickpay-ledger-table { width: 100%; border-collapse: collapse; }
+.quickpay-ledger-table th, .quickpay-ledger-table td { padding: 2px 6px; text-align: left; border-bottom: 1px solid rgba(128,128,128,0.3); }
+.quickpay-row.quickpay-in td:nth-child(4) { color: #3a7d3a; }
+.quickpay-row.quickpay-out td:nth-child(4) { color: #a33; }
+.quickpay-viewer .quickpay-controls { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 6px; }
+.quickpay-viewer .quickpay-controls input[type="search"] { flex: 1 1 140px; }
+.quickpay-viewer .quickpay-scroll { overflow: auto; max-height: 420px; }

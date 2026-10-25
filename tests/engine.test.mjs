@@ -34,6 +34,22 @@ function makeWorld({ hidden = [], hours = 12 } = {}) {
   const events = [];
   let id = 0;
 
+  // Ledgers: party (ana, ben), gmonly (nobody), biz (ana)
+  const ledgerState = {
+    party: { name: "Party", users: new Set(["ana", "ben"]), entries: [] },
+    gmonly: { name: "GM Only", users: new Set(), entries: [] },
+    biz: { name: "Jims Pickles", users: new Set(["ana"]), entries: [] },
+  };
+  const creators = new Set();
+  const failLedger = { on: false };
+  const personalCalls = [];
+  const failPersonal = { on: false };
+  let ledgerCounter = 0;
+  const upsert = (L, r) => {
+    L.entries = L.entries.filter((e) => e.id !== r.id);
+    L.entries.push({ id: r.id, status: r.status, note: r.note });
+  };
+
   const deps = {
     docs: {
       resolve: async (u) => docs.get(u) ?? null,
@@ -67,6 +83,29 @@ function makeWorld({ hidden = [], hours = 12 } = {}) {
       loadPending: async () => structuredClone(pending),
       savePending: async (o) => { pending = structuredClone(o); },
       appendLog: async (r) => { log.push(structuredClone(r)); },
+      findLog: async (i) => { const r = log.find((x) => x.id === i); return r ? structuredClone(r) : null; },
+      updateLog: async (i, patch) => { const r = log.find((x) => x.id === i); if (!r) return null; Object.assign(r, patch); return structuredClone(r); },
+    },
+    ledgers: {
+      canUse: async (u, lid) => !!ledgerState[lid] && (users[u].isGM || ledgerState[lid].users.has(u)),
+      canCreate: (u) => users[u].isGM || creators.has(u),
+      create: async (name, u, opts) => {
+        const lid = `led${++ledgerCounter}`;
+        ledgerState[lid] = { name, users: new Set(opts.visibleToAll ? ["ana", "ben"] : users[u].isGM ? [] : [u]), entries: [], opts };
+        return { id: lid, name };
+      },
+      record: async (r) => { if (failLedger.on) throw new Error("ledger down"); if (ledgerState[r.ledgerId]) upsert(ledgerState[r.ledgerId], r); },
+      reconcile: async (o, nw) => {
+        if (failLedger.on) throw new Error("ledger down");
+        if (o.ledgerId && o.ledgerId !== nw.ledgerId && ledgerState[o.ledgerId]) {
+          ledgerState[o.ledgerId].entries = ledgerState[o.ledgerId].entries.filter((e) => e.id !== o.id);
+        }
+        if (nw.ledgerId && ledgerState[nw.ledgerId]) upsert(ledgerState[nw.ledgerId], nw);
+      },
+    },
+    personal: {
+      record: async (r) => { if (failPersonal.on) throw new Error("personal down"); personalCalls.push(["record", r.id, r.status]); },
+      reconcile: async (o, nw) => { personalCalls.push(["reconcile", nw.id, nw.note]); },
     },
     settings: { expiryHours: () => hours, hidden: () => hidden, defaultVisibility: () => "public" },
     now: () => T.now,
@@ -80,7 +119,7 @@ function makeWorld({ hidden = [], hours = 12 } = {}) {
     for (const r of Object.values(pending)) if (r.sender) sum += toUnits(r.amount, ALL);
     return sum;
   };
-  return { T, users, docs, A, B, NPC, Pot, Priv, Locked, log, events, deps, engine: createEngine(deps), total, getPending: () => pending };
+  return { T, users, docs, A, B, NPC, Pot, Priv, Locked, log, events, deps, engine: createEngine(deps), total, getPending: () => pending, ledgerState, creators, failLedger, personalCalls, failPersonal };
 }
 
 let n = 0;
@@ -406,6 +445,154 @@ await t("log records carry the stable schema", async () => {
   assert.equal(rec.version, 1);
 });
 
+// ---- ledgers ----------------------------------------------------------------
+await t("tagging a ledger you can't use is refused and nothing moves", async () => {
+  const w = makeWorld();
+  w.A.bal.gp = 5;
+  for (const ledgerId of ["gmonly", "nope"]) {
+    const r = await send(w, "ana", "A", "NPC", { gp: 1 }, { ledgerId });
+    assert.equal(r.ok, false, ledgerId);
+  }
+  assert.equal(w.A.bal.gp, 5);
+  assert.equal(w.log.length, 0);
+});
+
+await t("a completed transfer is written to its ledger", async () => {
+  const w = makeWorld();
+  w.A.bal.gp = 5;
+  const r = await send(w, "ana", "A", "NPC", { gp: 1 }, { ledgerId: "biz", note: "jars" });
+  assert.equal(r.ok, true);
+  assert.deepEqual(w.ledgerState.biz.entries, [{ id: r.record.id, status: "completed", note: "jars" }]);
+});
+
+await t("a pending transfer reaches the ledger only when it resolves, whatever the outcome", async () => {
+  const w = makeWorld();
+  w.A.bal.gp = 5;
+  const r1 = await send(w, "ana", "A", "B", { gp: 1 }, { ledgerId: "party" });
+  assert.equal(w.ledgerState.party.entries.length, 0, "nothing while pending");
+  await w.engine.accept("ben", r1.record.id);
+  assert.equal(w.ledgerState.party.entries.at(-1).status, "completed");
+  const r2 = await send(w, "ana", "A", "B", { gp: 1 }, { ledgerId: "party" });
+  await w.engine.decline("ben", r2.record.id);
+  assert.equal(w.ledgerState.party.entries.at(-1).status, "declined");
+  assert.equal(w.ledgerState.party.entries.length, 2);
+});
+
+await t("a ledger failure never undoes a transfer", async () => {
+  const w = makeWorld();
+  w.A.bal.gp = 5;
+  w.failLedger.on = true;
+  const r = await send(w, "ana", "A", "NPC", { gp: 2 }, { ledgerId: "biz" });
+  assert.equal(r.ok, true);
+  assert.equal(w.A.bal.gp, 3);
+  assert.equal(w.NPC.bal.gp, 2);
+  assert.equal(w.log.length, 1);
+});
+
+await t("amend: the sender can move a transfer between ledgers", async () => {
+  const w = makeWorld();
+  w.A.bal.gp = 5;
+  const r = await send(w, "ana", "A", "NPC", { gp: 1 }, { ledgerId: "biz" });
+  const id = r.record.id;
+  const a = await w.engine.amend("ana", id, { ledgerId: "party" });
+  assert.equal(a.ok, true, JSON.stringify(a));
+  assert.equal(w.ledgerState.biz.entries.length, 0);
+  assert.equal(w.ledgerState.party.entries.length, 1);
+  assert.equal(w.log[0].ledgerId, "party");
+  const back = await w.engine.amend("ana", id, { ledgerId: null });
+  assert.equal(back.ok, true);
+  assert.equal(w.ledgerState.party.entries.length, 0);
+  assert.equal(w.log[0].ledgerId, null);
+});
+
+await t("amend: add a ledger to a transfer that had none, and edit the note", async () => {
+  const w = makeWorld();
+  w.A.bal.gp = 5;
+  const r = await send(w, "ana", "A", "NPC", { gp: 1 }, { note: "oops" });
+  assert.equal((await w.engine.amend("ana", r.record.id, { ledgerId: "biz" })).ok, true);
+  assert.equal(w.ledgerState.biz.entries[0].note, "oops");
+  assert.equal((await w.engine.amend("ana", r.record.id, { note: "  pickles  " })).ok, true);
+  assert.equal(w.log[0].note, "pickles");
+  assert.equal(w.ledgerState.biz.entries[0].note, "pickles", "the ledger follows the note");
+});
+
+await t("amend: who may and may not", async () => {
+  const w = makeWorld();
+  w.A.bal.gp = 5;
+  const r = await send(w, "ana", "A", "B", { gp: 1 }, { ledgerId: "party" });
+  await w.engine.accept("ben", r.record.id);
+  const id = r.record.id;
+  w.users.eve = { isGM: false, name: "Eve" };
+  w.ledgerState.party.users.add("eve");
+  assert.equal((await w.engine.amend("eve", id, { note: "mine now" })).ok, false, "a stranger");
+  assert.equal((await w.engine.amend("ben", id, { note: "thanks" })).ok, true, "the recipient's owner");
+  assert.equal((await w.engine.amend("gm", id, { note: "gm edit" })).ok, true, "a GM");
+  assert.equal(w.log[0].note, "gm edit");
+});
+
+await t("amend: you cannot move a transfer into a ledger you can't use", async () => {
+  const w = makeWorld();
+  w.A.bal.gp = 5;
+  const r = await send(w, "ana", "A", "B", { gp: 1 }, { ledgerId: "party" });
+  await w.engine.accept("ben", r.record.id);
+  const bad = await w.engine.amend("ben", r.record.id, { ledgerId: "biz" }); // ben can't use biz
+  assert.equal(bad.ok, false);
+  assert.equal(w.log[0].ledgerId, "party");
+  assert.equal(w.ledgerState.biz.entries.length, 0);
+  assert.equal((await w.engine.amend("ana", r.record.id, { ledgerId: "nope" })).ok, false);
+});
+
+await t("amend: a pending transfer's tag is kept and used when it resolves", async () => {
+  const w = makeWorld();
+  w.A.bal.gp = 5;
+  const r = await send(w, "ana", "A", "B", { gp: 1 });
+  assert.equal((await w.engine.amend("ana", r.record.id, { ledgerId: "party" })).ok, true);
+  assert.equal(w.getPending()[r.record.id].ledgerId, "party");
+  await w.engine.accept("ben", r.record.id);
+  assert.equal(w.ledgerState.party.entries.length, 1);
+  assert.equal(w.log[0].ledgerId, "party");
+});
+
+await t("amend: bad input and no-ops are rejected", async () => {
+  const w = makeWorld();
+  w.A.bal.gp = 5;
+  const r = await send(w, "ana", "A", "NPC", { gp: 1 }, { ledgerId: "biz" });
+  for (const [id, patch] of [["missing", { note: "x" }], [r.record.id, null], [r.record.id, "x"], [5, { note: "x" }],
+    [r.record.id, {}], [r.record.id, { note: 5 }], [r.record.id, { ledgerId: "biz" }], [r.record.id, { note: r.record.note }]]) {
+    assert.equal((await w.engine.amend("ana", id, patch)).ok, false, JSON.stringify([id, patch]));
+  }
+  assert.equal((await w.engine.amend("nobody", r.record.id, { note: "x" })).ok, false);
+});
+
+await t("amend: a ledger failure is reported but the transfer record still updates", async () => {
+  const w = makeWorld();
+  w.A.bal.gp = 5;
+  const r = await send(w, "ana", "A", "NPC", { gp: 1 }, { ledgerId: "biz" });
+  w.failLedger.on = true;
+  const a = await w.engine.amend("ana", r.record.id, { ledgerId: "party" });
+  assert.equal(a.ok, true);
+  assert.match(a.ledgerWarning, /ledger couldn't be/);
+  assert.equal(w.log[0].ledgerId, "party");
+});
+
+await t("creating ledgers: GM only by default, then as configured", async () => {
+  const w = makeWorld();
+  assert.equal((await w.engine.createLedger("ana", "Mine")).ok, false);
+  w.creators.add("ana");
+  const made = await w.engine.createLedger("ana", "  Jims Pickles 2  ");
+  assert.equal(made.ok, true);
+  assert.equal(made.name, "Jims Pickles 2");
+  assert.ok(w.ledgerState[made.id].users.has("ana"), "a player creator can use their ledger");
+  assert.equal((await w.engine.createLedger("ben", "Nope")).ok, false);
+  const gm = await w.engine.createLedger("gm", "Party Fund", { visibleToAll: true });
+  assert.equal(gm.ok, true);
+  assert.ok(w.ledgerState[gm.id].users.has("ben"));
+  const long = await w.engine.createLedger("gm", "x".repeat(200));
+  assert.equal(long.name.length, 60);
+  for (const bad of ["", "   ", null, 5, {}]) assert.equal((await w.engine.createLedger("gm", bad)).ok, false);
+  assert.equal((await w.engine.createLedger("stranger", "x")).ok, false);
+});
+
 await t("1000 random operations never create or destroy coins", async () => {
   const rnd = (m) => Math.floor(Math.random() * m);
   const pick = (a) => a[rnd(a.length)];
@@ -439,6 +626,48 @@ await t("1000 random operations never create or destroy coins", async () => {
     assert.deepEqual(w.getPending(), {});
     assert.equal(w.total(), start);
   }
+});
+
+// ---- personal ledgers --------------------------------------------------------
+await t("personal ledgers hear about every ended transfer, tagged or not", async () => {
+  const w = makeWorld();
+  w.A.bal.gp = 5;
+  const r = await send(w, "ana", "A", "NPC", { gp: 1 });
+  assert.equal(r.ok, true);
+  assert.deepEqual(w.personalCalls, [["record", r.record.id, "completed"]]);
+});
+
+await t("personal ledgers also hear about declined and cancelled transfers", async () => {
+  const w = makeWorld();
+  w.A.bal.gp = 5;
+  const r = await send(w, "ana", "A", "B", { gp: 1 });
+  if (r.record.status === "pending") {
+    await w.engine.cancel("ana", r.record.id);
+    assert.ok(w.personalCalls.some((c) => c[0] === "record" && c[2] === "cancelled"));
+  }
+});
+
+await t("a failing personal ledger never blocks or undoes a transfer", async () => {
+  const w = makeWorld();
+  w.A.bal.gp = 5;
+  w.failPersonal.on = true;
+  const start = w.total();
+  const r = await send(w, "ana", "A", "NPC", { gp: 2 });
+  assert.equal(r.ok, true);
+  assert.equal(r.record.status, "completed");
+  assert.equal(w.total(), start);
+  assert.equal(w.log.length, 1);
+});
+
+await t("amending a note refreshes personal ledgers, but a ledger move alone does not", async () => {
+  const w = makeWorld();
+  w.A.bal.gp = 5;
+  const r = await send(w, "ana", "A", "NPC", { gp: 1 }, { ledgerId: "biz" });
+  w.personalCalls.length = 0;
+  await w.engine.amend("ana", r.record.id, { ledgerId: "party" });
+  assert.equal(w.personalCalls.length, 0);
+  await w.engine.amend("ana", r.record.id, { note: "fixed" });
+  assert.deepEqual(w.personalCalls, [["reconcile", r.record.id, "fixed"]]);
 });
 
 console.log(`\n${n} engine tests passed`);

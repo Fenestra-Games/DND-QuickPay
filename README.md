@@ -2,7 +2,7 @@
 
 A Foundry VTT module for sending coins between players, GMs, actors, and containers. Built for Foundry v14.367+ and dnd5e, with socketlib required. A system adapter layer is in place so other systems can be added later.
 
-**Status:** stage 2 of the build. The transfer engine, escrow, and pending transfers work, but there is no UI yet. Everything is driven from the console or macros.
+**Status:** stage 3a of the build. Transfers now post chat cards, and ledgers (business and personal) are kept as journals. There are no send dialogs or sheet buttons yet, so everything is driven from the console or macros.
 
 ## Install
 
@@ -20,7 +20,18 @@ Install socketlib too, then enable both in your world.
 - Decline, expire, and cancel all return the coins to the sender. A GM can accept, decline, or cancel anything.
 - Players can send from actors they own to any actor, to containers they own, or to containers flagged `dnd-quickpay.publicRecipient = true`. Only GMs can create coins from nowhere (null sender) or remove them (null recipient).
 
-## Console API (stage 2)
+## Chat cards
+
+- The sender always sees a result card. Visibility `public` (the default) shows everyone, `gm-recipient` shows the GMs, the sender, and the recipient's owners, and `gm` shows the GMs and the sender.
+- When acceptance is needed, the recipient's owners and the GMs get a card with Accept and Decline buttons (GMs also get Cancel). The sender gets a waiting card with Cancel. These turn into plain text once the transfer ends.
+
+## Ledgers
+
+- **Business ledgers** are named journals (for example "Jims Pickles") in a "QuickPay Ledgers" folder. Tag a transfer with `ledgerId` when sending, or add or change it later with `qp.amend(id, { ledgerId, note })`. Who can read a ledger is that journal's permission (Observer or better). Only GMs can create ledgers unless you change it with `qp.setLedgerCreators({ mode: "all" })` or `{ mode: "users", users: [userIds] }`.
+- **Personal ledgers** are one journal per player character, in a "QuickPay Personal Ledgers" folder, made the first time a transfer touches the character. Owners can read their own. They show money in and out from the character's point of view and record every ended transfer, including declined and expired ones. A GM-only transfer shows the player as an "Unknown deposit" or "Unknown withdrawal" with no source and no note. NPCs have no personal ledger unless you switch one on with `qp.ledgers.setPersonal(actorUuid, true)`.
+- `qp.ledgers.open()` opens a searchable viewer with filters for status, person, and direction. The journal page itself is a static table of completed transfers.
+
+## Console API
 
 ```js
 const qp = game.modules.get("dnd-quickpay").api;
@@ -30,21 +41,25 @@ await qp.request({
   recipientUuid: "Actor.yyyy",       // actor or container UUID; null = remove coins (GM only)
   amount: { gp: 2, sp: 5 },
   note: "Thanks for the rope",
-  visibility: "public",              // "public" | "gm-recipient" | "gm" (stored for the chat stage)
-  ledgerId: null                     // stored for the ledger stage
+  visibility: "public",              // "public" | "gm-recipient" | "gm"
+  ledgerId: null                     // a business ledger id from qp.ledgers.list()
 });
 
 qp.pending();                        // your pending transfers (GM sees all)
 await qp.accept(id);  await qp.decline(id);  await qp.cancel(id);
 qp.log();                            // GM only: every resolved transfer
+await qp.amend(id, { note: "fixed", ledgerId });
+await qp.ledgers.create("Jims Pickles");  qp.ledgers.list();  qp.ledgers.open();
+await qp.ledgers.createPersonal();   // GM only: journals for every player character
 await qp.expireNow();                // GM only
 ```
 
-Hooks for other modules and the upcoming chat stage: `dnd-quickpay.transferPending` and `dnd-quickpay.transferResolved`, both called with the transfer record.
+Hooks for other modules: `dnd-quickpay.transferPending`, `dnd-quickpay.transferResolved`, and `dnd-quickpay.transferAmended`, both called with the transfer record.
 
 ## Known limits at this stage
 
-- No chat messages, dialogs, or buttons yet.
+- No send dialog or sheet buttons yet.
+- The Foundry-side ledger and chat code is tested against stand-ins only, so treat it as new until you have run it in your world.
 - The pending list and the log live in world settings, so a technical player can read them from the console. The ledger stage moves them to GM-only journals. The log is capped at the latest 2000 transfers until then.
 - The permission rules are fixed defaults. The configurable matrix comes later.
 

@@ -3,6 +3,8 @@ import { getDenominations, getBalance, holdsCurrency, quote } from "./adapters/d
 import { registerSettings } from "./settings.mjs";
 import { buildEngine } from "./foundry-deps.mjs";
 import { initSocket, callGM } from "./socket.mjs";
+import { initChat } from "./chat.mjs";
+import * as ledger from "./ledger.mjs";
 
 let engine = null;
 const getEngine = () => (engine ??= buildEngine());
@@ -17,6 +19,7 @@ Hooks.once("init", () => {
     return;
   }
   registerSettings();
+  initChat();
 });
 
 Hooks.once("ready", () => {
@@ -58,6 +61,37 @@ Hooks.once("ready", () => {
     accept: (id) => callGM("accept", id),
     decline: (id) => callGM("decline", id),
     cancel: (id) => callGM("cancel", id),
+    /** Change a transfer after the fact: { ledgerId?: string|null, note?: string }. */
+    amend: (id, patch) => callGM("amend", id, patch),
+
+    ledgers: {
+      /** Create a named ledger. Who may is set by the ledgerCreators setting (GM only by default). */
+      create: (name, options = {}) => callGM("createLedger", name, options),
+      /** Business ledgers you may tag transfers to. */
+      list: () => ledger.listLedgers(),
+      /** Open the filterable viewer (optionally on one ledger id). */
+      open: async (ledgerId = null) => (await import("./ui/ledger-app.mjs")).openLedgerViewer(ledgerId),
+      /** Entries of a ledger you can read, or null. */
+      read: (ledgerId) => ledger.readEntries(ledgerId),
+      /** GM only: make a personal ledger journal for every player character. */
+      createPersonal: async () => (game.user.isGM ? ledger.createAllPersonal() : 0),
+      /** GM only: switch an actor's personal ledger on, off, or back to the default (null). */
+      setPersonal: async (actorUuid, on) => {
+        if (!game.user.isGM) return false;
+        const actor = await fromUuid(actorUuid);
+        if (actor?.documentName !== "Actor") return false;
+        await ledger.setPersonalEnabled(actor, on);
+        return true;
+      },
+    },
+    /** GM only: who may create ledgers: { mode: "gm"|"all"|"users", users: [userIds] }. */
+    setLedgerCreators: async (value) => {
+      if (!game.user.isGM) return false;
+      const mode = ["gm", "all", "users"].includes(value?.mode) ? value.mode : "gm";
+      const users = Array.isArray(value?.users) ? value.users.filter((id) => game.users.has(id)) : [];
+      await game.settings.set(MODULE_ID, "ledgerCreators", { mode, users });
+      return true;
+    },
 
     pending: visiblePending,
     /** GM only: the global transaction log. */
@@ -68,7 +102,7 @@ Hooks.once("ready", () => {
 
   // Sweep for expired transfers on load and whenever the world clock moves
   if (isActiveGM()) getEngine().expireDue();
-  console.log(`${MODULE_ID} | stage 2 loaded (no UI yet)`);
+  console.log(`${MODULE_ID} | stage 3a loaded (chat cards and ledgers, no dialogs yet)`);
 });
 
 Hooks.on("updateWorldTime", () => {

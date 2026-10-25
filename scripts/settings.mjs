@@ -8,6 +8,8 @@ export function registerSettings() {
   reg("log", { scope: "world", config: false, type: Object, default: { records: [] } });
   reg("hiddenDenominations", { scope: "world", config: false, type: Object, default: { list: [] } });
 
+  reg("ledgerCreators", { scope: "world", config: false, type: Object, default: { mode: "gm", users: [] } });
+
   // Shown to the GM
   reg("expiryHours", {
     name: "Pending transfer expiry (in-world hours)",

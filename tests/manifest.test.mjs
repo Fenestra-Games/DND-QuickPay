@@ -24,6 +24,9 @@ t("every esmodule file exists", () => {
   assert.ok(m.esmodules.length > 0);
   for (const f of m.esmodules) assert.ok(existsSync(path.join(root, f)), f);
 });
+t("every style file exists", () => {
+  for (const f of m.styles ?? []) assert.ok(existsSync(path.join(root, f)), f);
+});
 t("version is semver and matches package.json", () => {
   assert.match(m.version, /^\d+\.\d+\.\d+$/);
   assert.equal(m.version, pkg.version);

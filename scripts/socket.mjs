@@ -34,7 +34,7 @@ export function initSocket(getEngine) {
         }
       };
 
-    for (const name of ["request", "accept", "decline", "cancel"]) socket.register(name, handle(name));
+    for (const name of ["request", "accept", "decline", "cancel", "amend", "createLedger"]) socket.register(name, handle(name));
   });
 }
 

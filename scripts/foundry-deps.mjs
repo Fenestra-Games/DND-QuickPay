@@ -1,6 +1,7 @@
 import { MODULE_ID, FLAGS, LOG_CAP } from "./constants.mjs";
 import { getDenominations, getBalance, holdsCurrency, commit } from "./adapters/dnd5e.mjs";
 import { createEngine } from "./core/engine.mjs";
+import * as ledger from "./ledger.mjs";
 
 /** Connects the engine to real Foundry documents, settings, and hooks. */
 export function buildEngine() {
@@ -38,6 +39,18 @@ export function buildEngine() {
       const records = [...(cur.records ?? []), structuredClone(record)].slice(-LOG_CAP);
       await game.settings.set(MODULE_ID, "log", { records });
     },
+    findLog(id) {
+      const rec = (game.settings.get(MODULE_ID, "log")?.records ?? []).find((r) => r.id === id);
+      return rec ? structuredClone(rec) : null;
+    },
+    async updateLog(id, patch) {
+      const records = structuredClone(game.settings.get(MODULE_ID, "log")?.records ?? []);
+      const rec = records.find((r) => r.id === id);
+      if (!rec) return null;
+      Object.assign(rec, patch);
+      await game.settings.set(MODULE_ID, "log", { records });
+      return structuredClone(rec);
+    },
   };
 
   const settings = {
@@ -50,6 +63,17 @@ export function buildEngine() {
     docs,
     coins: { getDenominations, getBalance, holdsCurrency, commit },
     store,
+    ledgers: {
+      canUse: (userId, ledgerId) => ledger.canUse(userId, ledgerId),
+      canCreate: (userId) => ledger.canCreate(userId),
+      create: (name, userId, opts) => ledger.create(name, userId, opts),
+      record: (rec) => ledger.record(rec),
+      reconcile: (before, after) => ledger.reconcile(before, after),
+    },
+    personal: {
+      record: (rec) => ledger.recordPersonal(rec),
+      reconcile: (before, after) => ledger.reconcilePersonal(before, after),
+    },
     settings,
     now: () => game.time.worldTime,
     newId: () => foundry.utils.randomID(16),

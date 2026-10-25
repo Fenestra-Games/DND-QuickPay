@@ -1,9 +1,9 @@
 {
   "name": "dnd-quickpay",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node tests/manifest.test.mjs && node tests/coins.test.mjs && node tests/engine.test.mjs && node tests/foundry-smoke.test.mjs"
+    "test": "node tests/manifest.test.mjs && node tests/coins.test.mjs && node tests/format.test.mjs && node tests/engine.test.mjs && node tests/foundry-smoke.test.mjs"
   }
 }

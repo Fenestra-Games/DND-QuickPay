@@ -9,7 +9,11 @@
  *            userExists(id), userName(id), isGM(id), userOwns(id, doc),
  *            isPlayerOwned(actor), acceptanceFlag(actor), isPublic(container) },
  *   coins: { getDenominations({hidden}), getBalance(doc), commit(doc, delta), holdsCurrency(doc) },
- *   store: { loadPending(), savePending(obj), appendLog(record) },
+ *   store: { loadPending(), savePending(obj), appendLog(record), findLog(id), updateLog(id, patch) },
+ *   ledgers: { canUse(userId, ledgerId), canCreate(userId), create(name, userId, options),
+ *              record(record), reconcile(oldRecord, newRecord) },
+ *   personal: optional { record(record), reconcile(oldRecord, newRecord) } for personal ledgers,
+ *             called for every ended transfer whatever its ledger tag,
  *   settings: { expiryHours(), hidden(), defaultVisibility() },
  *   now(),            // in-world time in seconds
  *   newId(),
@@ -21,6 +25,7 @@
  *    completion. Decline, expiry and cancel return the escrow to the sender.
  *  - Every step is serialised, so two requests can never spend the same coins.
  *  - If a credit fails after a debit, the debit is rolled back.
+ *  - Ledgers are bookkeeping only. If writing a ledger fails, the transfer still stands.
  */
 
 import { planPayment, normalizeAmount, applyDelta, invertDelta } from "./coins.mjs";
@@ -36,13 +41,15 @@ export const STATUS = Object.freeze({
 export const VISIBILITY = Object.freeze(["public", "gm-recipient", "gm"]);
 
 const NOTE_MAX = 500;
+const LEDGER_NAME_MAX = 60;
 const RECORD_VERSION = 1;
 
 const ok = (extra = {}) => ({ ok: true, ...extra });
 const no = (error, extra = {}) => ({ ok: false, error, ...extra });
 
 export function createEngine(deps) {
-  const { docs, coins, store, settings, now, newId, emit } = deps;
+  const { docs, coins, store, ledgers, settings, now, newId, emit } = deps;
+  const personal = deps.personal ?? null;
 
   // ---- serialisation -------------------------------------------------------
   let chain = Promise.resolve();
@@ -55,6 +62,9 @@ export function createEngine(deps) {
   const denoms = () => coins.getDenominations({ hidden: settings.hidden() });
 
   // ---- input ---------------------------------------------------------------
+  const cleanNote = (v) => (typeof v === "string" ? v.trim().slice(0, NOTE_MAX) : "");
+  const cleanLedgerId = (v) => (typeof v === "string" && v ? v.slice(0, 64) : null);
+
   function sanitize(input) {
     if (!input || typeof input !== "object") return { error: "Invalid request." };
     const uuidOrNull = (v) => (v == null || v === "" ? null : typeof v === "string" ? v : undefined);
@@ -66,9 +76,9 @@ export function createEngine(deps) {
       senderUuid,
       recipientUuid,
       amount: input.amount,
-      note: typeof input.note === "string" ? input.note.trim().slice(0, NOTE_MAX) : "",
+      note: cleanNote(input.note),
       visibility: VISIBILITY.includes(input.visibility) ? input.visibility : settings.defaultVisibility(),
-      ledgerId: typeof input.ledgerId === "string" && input.ledgerId ? input.ledgerId.slice(0, 64) : null,
+      ledgerId: cleanLedgerId(input.ledgerId),
     };
   }
 
@@ -93,7 +103,7 @@ export function createEngine(deps) {
     return coins.commit(sender, delta);
   }
 
-  /** Close a record: take it out of the pending store, write it to the log, tell listeners. */
+  /** Close a record: take it out of the pending store, write it to the log and ledger, tell listeners. */
   async function finish(record, status, resolution, userId, extra = {}) {
     Object.assign(record, extra, {
       status,
@@ -107,6 +117,20 @@ export function createEngine(deps) {
       await store.savePending(pend);
     }
     await store.appendLog(record);
+    if (record.ledgerId) {
+      try {
+        await ledgers.record(record);
+      } catch (err) {
+        console.error("dnd-quickpay | could not write to the ledger", err);
+      }
+    }
+    if (personal) {
+      try {
+        await personal.record(record);
+      } catch (err) {
+        console.error("dnd-quickpay | could not write to a personal ledger", err);
+      }
+    }
     emit("transferResolved", record);
     return record;
   }
@@ -145,6 +169,11 @@ export function createEngine(deps) {
       if (docs.kind(recipient) === "container" && !docs.isPublic(recipient) && !docs.userOwns(userId, recipient)) {
         return no(`${docs.name(recipient)} isn't accepting coins.`);
       }
+    }
+
+    // A ledger tag must point at a ledger this user is allowed to use
+    if (clean.ledgerId && !(await ledgers.canUse(userId, clean.ledgerId))) {
+      return no("You can't use that ledger, or it doesn't exist.");
     }
 
     // Work out the coins
@@ -282,11 +311,93 @@ export function createEngine(deps) {
     return count;
   }
 
+  // ---- amending ------------------------------------------------------------
+  /** Who may change the ledger tag or note of an existing transfer. */
+  async function canAmend(userId, record) {
+    if (docs.isGM(userId)) return true;
+    if (record.initiatedBy === userId) return true;
+    for (const side of [record.sender, record.recipient]) {
+      if (!side) continue;
+      const doc = await docs.resolve(side.uuid);
+      if (doc && docs.userOwns(userId, doc)) return true;
+    }
+    return false;
+  }
+
+  async function doAmend(userId, id, patch) {
+    if (!docs.userExists(userId)) return no("Couldn't identify who made this request.");
+    if (typeof id !== "string" || !patch || typeof patch !== "object") return no("Invalid request.");
+
+    const pend = await store.loadPending();
+    const wasPending = id in pend;
+    const before = wasPending ? structuredClone(pend[id]) : await store.findLog(id);
+    if (!before) return no("That transfer couldn't be found.");
+    if (!(await canAmend(userId, before))) return no("You can't change that transfer.");
+
+    const next = {};
+    if ("ledgerId" in patch) {
+      const ledgerId = patch.ledgerId == null || patch.ledgerId === "" ? null : cleanLedgerId(patch.ledgerId);
+      if (patch.ledgerId != null && patch.ledgerId !== "" && !ledgerId) return no("Invalid ledger.");
+      if (ledgerId && !(await ledgers.canUse(userId, ledgerId))) {
+        return no("You can't use that ledger, or it doesn't exist.");
+      }
+      if (ledgerId !== before.ledgerId) next.ledgerId = ledgerId;
+    }
+    if ("note" in patch) {
+      if (typeof patch.note !== "string") return no("Invalid note.");
+      const note = cleanNote(patch.note);
+      if (note !== before.note) next.note = note;
+    }
+    if (!Object.keys(next).length) return no("Nothing to change.");
+
+    let after;
+    if (wasPending) {
+      pend[id] = { ...pend[id], ...next };
+      await store.savePending(pend);
+      after = structuredClone(pend[id]);
+    } else {
+      after = await store.updateLog(id, next);
+      if (!after) return no("That transfer couldn't be updated.");
+    }
+
+    let ledgerWarning = null;
+    if (!wasPending && (before.ledgerId || after.ledgerId)) {
+      try {
+        await ledgers.reconcile(before, after);
+      } catch (err) {
+        console.error("dnd-quickpay | could not update the ledger", err);
+        ledgerWarning = "The transfer was updated, but the ledger couldn't be.";
+      }
+    }
+    if (!wasPending && personal && before.note !== after.note) {
+      try {
+        await personal.reconcile(before, after);
+      } catch (err) {
+        console.error("dnd-quickpay | could not update a personal ledger", err);
+      }
+    }
+    emit("transferAmended", after);
+    return ok({ record: after, ...(ledgerWarning ? { ledgerWarning } : {}) });
+  }
+
+  // ---- ledgers -------------------------------------------------------------
+  async function doCreateLedger(userId, name, options) {
+    if (!docs.userExists(userId)) return no("Couldn't identify who made this request.");
+    if (!ledgers.canCreate(userId)) return no("You don't have permission to create ledgers.");
+    const clean = typeof name === "string" ? name.trim().slice(0, LEDGER_NAME_MAX) : "";
+    if (!clean) return no("A ledger needs a name.");
+    const opts = options && typeof options === "object" ? options : {};
+    const made = await ledgers.create(clean, userId, { visibleToAll: opts.visibleToAll === true });
+    return ok(made);
+  }
+
   return {
     request: (userId, input) => serialize(() => doRequest(userId, input)),
     accept: (userId, id) => serialize(() => doAccept(userId, id)),
     decline: (userId, id) => serialize(() => doDecline(userId, id)),
     cancel: (userId, id) => serialize(() => doCancel(userId, id)),
+    amend: (userId, id, patch) => serialize(() => doAmend(userId, id, patch)),
+    createLedger: (userId, name, options) => serialize(() => doCreateLedger(userId, name, options)),
     expireDue: () => serialize(() => doExpireDue()),
     async pending() {
       return Object.values(await store.loadPending());
