@@ -16,8 +16,8 @@ export function registerSettings() {
 
   // Shown to the GM
   reg("expiryHours", {
-    name: "Pending transfer expiry (in-world hours)",
-    hint: "How long a transfer waiting for acceptance lasts before the coins go back to the sender. Counted in game time, so it only runs out when the world clock moves (for example on a long rest).",
+    name: "QUICKPAY.opt.expiry",
+    hint: "QUICKPAY.opt.expirySettingHint",
     scope: "world",
     config: false,
     type: Number,
@@ -25,8 +25,8 @@ export function registerSettings() {
     range: { min: 1, max: 720, step: 1 },
   });
   reg("offlineMessage", {
-    name: "Message when no GM is online",
-    hint: "Shown to a player who tries to send coins while no GM is connected. Leave it blank for a plain message.",
+    name: "QUICKPAY.opt.offlineMessage",
+    hint: "QUICKPAY.opt.offlineSettingHint",
     scope: "world",
     config: false,
     type: String,
@@ -36,18 +36,18 @@ export function registerSettings() {
   // Each section is its own button on the module's settings page. GM-only ones are hidden from players.
   for (const p of PANE_LIST) {
     game.settings.registerMenu(MODULE_ID, `options-${p.key}`, {
-      name: p.title,
-      label: p.label,
-      hint: p.hint,
+      name: p.titleKey,
+      label: p.titleKey,
+      hint: p.hintKey,
       icon: p.icon,
       type: PANE_CLASSES[p.key],
       restricted: p.gmOnly,
     });
   }
   game.settings.registerMenu(MODULE_ID, "options-containers", {
-    name: "Public containers",
-    label: "Public containers",
-    hint: "Tick the containers that anyone may send coins to.",
+    name: "QUICKPAY.menu.containers",
+    label: "QUICKPAY.menu.containers",
+    hint: "QUICKPAY.containers.menuHint",
     icon: "fa-solid fa-box-open",
     type: PublicContainers,
     restricted: false,

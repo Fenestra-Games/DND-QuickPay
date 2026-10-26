@@ -29,12 +29,12 @@ export const DEFAULT_OPTIONS = Object.freeze({
 });
 
 export const PERMISSION_RULES = Object.freeze([
-  { key: "playerToOwnActor", label: "Player to another of their own characters" },
-  { key: "playerToPlayer", label: "Player to another player's character" },
-  { key: "playerToGMActor", label: "Player to an NPC or other GM-side actor" },
-  { key: "playerToOwnContainer", label: "Player to a container they own" },
-  { key: "playerToPublicContainer", label: "Player to a public container" },
-  { key: "playerToOtherContainer", label: "Player to any other container" },
+  { key: "playerToOwnActor", labelKey: "QUICKPAY.perm.playerToOwnActor" },
+  { key: "playerToPlayer", labelKey: "QUICKPAY.perm.playerToPlayer" },
+  { key: "playerToGMActor", labelKey: "QUICKPAY.perm.playerToGMActor" },
+  { key: "playerToOwnContainer", labelKey: "QUICKPAY.perm.playerToOwnContainer" },
+  { key: "playerToPublicContainer", labelKey: "QUICKPAY.perm.playerToPublicContainer" },
+  { key: "playerToOtherContainer", labelKey: "QUICKPAY.perm.playerToOtherContainer" },
 ]);
 export const PERMISSION_VALUES = ["allow", "approval", "block"];
 

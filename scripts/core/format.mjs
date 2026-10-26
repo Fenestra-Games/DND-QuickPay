@@ -13,6 +13,7 @@
  * }
  */
 import { formatAmount } from "./coins.mjs";
+import { t } from "../i18n.mjs";
 
 const COIN = '<i class="fa-solid fa-coins quickpay-gold"></i> ';
 const MAP = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
@@ -22,7 +23,7 @@ const b = (s) => `<strong>${esc(s)}</strong>`;
 const amt = (r, ctx) => b(formatAmount(r.amount ?? {}, ctx.denoms ?? []));
 const noteHTML = (r) => (r.note ? `<div class="quickpay-note">&ldquo;${esc(r.note)}&rdquo;</div>` : "");
 const ledgerHTML = (r, ctx) =>
-  r.ledgerId && ctx.ledgerName ? `<div class="quickpay-ledger">Ledger: ${esc(ctx.ledgerName)}</div>` : "";
+  r.ledgerId && ctx.ledgerName ? `<div class="quickpay-ledger">${esc(t("QUICKPAY.card.ledger", { name: ctx.ledgerName }))}</div>` : "";
 
 const button = (action, id, label, extra = "") =>
   `<button type="button" class="quickpay-btn" data-quickpay-action="${esc(action)}" data-transfer="${esc(id)}"${extra}>${esc(label)}</button>`;
@@ -30,8 +31,8 @@ const button = (action, id, label, extra = "") =>
 const returned = (r) => {
   if (!r.sender || r.request) return ""; // no sender, or an approval request that never took any coins
   return r.refunded === false
-    ? " The coins couldn't be returned."
-    : ` The coins went back to ${b(r.sender.name)}.`;
+    ? ` ${t("QUICKPAY.card.coinsNotReturned")}`
+    : ` ${t("QUICKPAY.card.coinsBack", { name: b(r.sender.name) })}`;
 };
 
 /** One sentence describing how a transfer ended. */
@@ -40,22 +41,22 @@ export function resolvedLine(r, ctx) {
   const to = r.recipient?.name;
   switch (r.status) {
     case "completed":
-      if (!from) return `${amt(r, ctx)} was created for ${b(to)}.`;
-      if (!to) return `${b(from)} lost ${amt(r, ctx)} (removed from play).`;
-      return `${b(from)} paid ${amt(r, ctx)} to ${b(to)}.${r.resolution === "accepted-by-gm" ? " <em>(accepted by the GM)</em>" : ""}`;
+      if (!from) return t("QUICKPAY.card.created", { amount: amt(r, ctx), to: b(to) });
+      if (!to) return t("QUICKPAY.card.lost", { from: b(from), amount: amt(r, ctx) });
+      return t("QUICKPAY.card.paid", { from: b(from), amount: amt(r, ctx), to: b(to) }) + (r.resolution === "accepted-by-gm" ? ` <em>${t("QUICKPAY.card.acceptedByGm")}</em>` : "");
     case "declined":
-      return `${b(to)} declined ${amt(r, ctx)}${from ? ` from ${b(from)}` : ""}.${returned(r)}`;
+      return (from ? t("QUICKPAY.card.declinedFrom", { to: b(to), amount: amt(r, ctx), from: b(from) }) : t("QUICKPAY.card.declined", { to: b(to), amount: amt(r, ctx) })) + returned(r);
     case "expired":
-      return `The transfer of ${amt(r, ctx)} ${from ? `from ${b(from)} ` : ""}to ${b(to)} expired.${returned(r)}`;
+      return (from ? t("QUICKPAY.card.expiredFrom", { amount: amt(r, ctx), from: b(from), to: b(to) }) : t("QUICKPAY.card.expired", { amount: amt(r, ctx), to: b(to) })) + returned(r);
     case "cancelled":
       if (r.resolution === "recipient-missing") {
-        return `${b(to)} no longer exists, so the transfer of ${amt(r, ctx)} was cancelled.${returned(r)}`;
+        return t("QUICKPAY.card.cancelledMissing", { to: b(to), amount: amt(r, ctx) }) + returned(r);
       }
-      return `The transfer of ${amt(r, ctx)} ${from ? `from ${b(from)} ` : ""}to ${b(to)} was cancelled.${returned(r)}`;
+      return (from ? t("QUICKPAY.card.cancelledFrom", { amount: amt(r, ctx), from: b(from), to: b(to) }) : t("QUICKPAY.card.cancelled", { amount: amt(r, ctx), to: b(to) })) + returned(r);
     case "denied":
-      return `The GM denied ${b(from ?? "the")} request to pay ${amt(r, ctx)} to ${b(to)}.`;
+      return from ? t("QUICKPAY.card.denied", { from: b(from), amount: amt(r, ctx), to: b(to) }) : t("QUICKPAY.card.deniedNoSender", { amount: amt(r, ctx), to: b(to) });
     default:
-      return `${b(from ?? "nowhere")} to ${b(to ?? "nowhere")}: ${esc(r.status)}`;
+      return t("QUICKPAY.card.other", { from: b(from ?? t("QUICKPAY.card.nowhere")), to: b(to ?? t("QUICKPAY.card.nowhere")), status: esc(r.status) });
   }
 }
 
@@ -73,34 +74,36 @@ export function settledHTML(r, ctx) {
 export function maskedPendingCardHTML(r, ctx) {
   return (
     `<div class="quickpay-card quickpay-pending">` + COIN +
-    `Someone wants to give ${b(r.recipient?.name)} ${amt(r, ctx)}.` +
-    (ctx.expiresText ? `<div class="quickpay-expiry">Expires ${esc(ctx.expiresText)}</div>` : "") +
+    t("QUICKPAY.card.maskedWants", { to: b(r.recipient?.name), amount: amt(r, ctx) }) +
+    (ctx.expiresText ? `<div class="quickpay-expiry">${esc(t("QUICKPAY.card.expires", { time: ctx.expiresText }))}</div>` : "") +
     `<div class="quickpay-buttons">` +
-    button("accept", r.id, "Accept") +
-    button("decline", r.id, "Decline") +
+    button("accept", r.id, t("QUICKPAY.btn.accept")) +
+    button("decline", r.id, t("QUICKPAY.btn.decline")) +
     `</div></div>`
   );
 }
 
 /** What a masked prompt turns into once the transfer has ended. */
 export function maskedSettledHTML(r, ctx) {
-  const word = { completed: "was accepted", declined: "was declined", expired: "expired", cancelled: "was cancelled" }[r.status] ?? esc(r.status);
-  return `<div class="quickpay-card quickpay-settled quickpay-${esc(r.status)}">` + COIN + `The transfer of ${amt(r, ctx)} to ${b(r.recipient?.name)} ${word}.</div>`;
+  const key = { completed: "maskedAccepted", declined: "maskedDeclined", expired: "maskedExpired", cancelled: "maskedCancelled" }[r.status];
+  const data = { amount: amt(r, ctx), to: b(r.recipient?.name) };
+  const text = key ? t(`QUICKPAY.card.${key}`, data) : t("QUICKPAY.card.maskedOther", { ...data, status: esc(r.status) });
+  return `<div class="quickpay-card quickpay-settled quickpay-${esc(r.status)}">` + COIN + text + `</div>`;
 }
 
 /** Card shown to the recipient's owners and the GM when acceptance is needed. */
 export function pendingCardHTML(r, ctx) {
-  const from = r.sender?.name ?? "The GM";
+  const from = r.sender?.name ?? t("QUICKPAY.card.theGm");
   return (
     `<div class="quickpay-card quickpay-pending">` + COIN +
-    `${b(from)} wants to give ${b(r.recipient?.name)} ${amt(r, ctx)}.` +
+    t("QUICKPAY.card.wants", { from: b(from), to: b(r.recipient?.name), amount: amt(r, ctx) }) +
     noteHTML(r) +
     ledgerHTML(r, ctx) +
-    (ctx.expiresText ? `<div class="quickpay-expiry">Expires ${esc(ctx.expiresText)}</div>` : "") +
+    (ctx.expiresText ? `<div class="quickpay-expiry">${esc(t("QUICKPAY.card.expires", { time: ctx.expiresText }))}</div>` : "") +
     `<div class="quickpay-buttons">` +
-    button("accept", r.id, "Accept") +
-    button("decline", r.id, "Decline") +
-    button("cancel", r.id, "Cancel (GM)", " data-gm-only") +
+    button("accept", r.id, t("QUICKPAY.btn.accept")) +
+    button("decline", r.id, t("QUICKPAY.btn.decline")) +
+    button("cancel", r.id, t("QUICKPAY.btn.cancelGm"), " data-gm-only") +
     `</div></div>`
   );
 }
@@ -109,10 +112,10 @@ export function pendingCardHTML(r, ctx) {
 export function senderCardHTML(r, ctx) {
   return (
     `<div class="quickpay-card quickpay-pending">` + COIN +
-    `Waiting for ${b(r.recipient?.name)} to accept ${amt(r, ctx)}.` +
+    t("QUICKPAY.card.waiting", { to: b(r.recipient?.name), amount: amt(r, ctx) }) +
     noteHTML(r) +
-    (ctx.expiresText ? `<div class="quickpay-expiry">Expires ${esc(ctx.expiresText)}</div>` : "") +
-    `<div class="quickpay-buttons">${button("cancel", r.id, "Cancel")}</div></div>`
+    (ctx.expiresText ? `<div class="quickpay-expiry">${esc(t("QUICKPAY.card.expires", { time: ctx.expiresText }))}</div>` : "") +
+    `<div class="quickpay-buttons">${button("cancel", r.id, t("QUICKPAY.btn.cancel"))}</div></div>`
   );
 }
 
@@ -123,13 +126,13 @@ const uniq = (list) => [...new Set(list.filter(Boolean))];
 export function approvalCardHTML(r, ctx) {
   return (
     `<div class="quickpay-card quickpay-pending">` + COIN +
-    `${b(r.sender?.name)} asks to pay ${amt(r, ctx)} to ${b(r.recipient?.name)}. This needs GM approval.` +
+    t("QUICKPAY.card.asks", { from: b(r.sender?.name), amount: amt(r, ctx), to: b(r.recipient?.name) }) +
     noteHTML(r) +
     ledgerHTML(r, ctx) +
-    (ctx.expiresText ? `<div class="quickpay-expiry">Expires ${esc(ctx.expiresText)}</div>` : "") +
+    (ctx.expiresText ? `<div class="quickpay-expiry">${esc(t("QUICKPAY.card.expires", { time: ctx.expiresText }))}</div>` : "") +
     `<div class="quickpay-buttons">` +
-    button("approve", r.id, "Approve") +
-    button("deny", r.id, "Deny") +
+    button("approve", r.id, t("QUICKPAY.btn.approve")) +
+    button("deny", r.id, t("QUICKPAY.btn.deny")) +
     `</div></div>`
   );
 }
@@ -138,16 +141,16 @@ export function approvalCardHTML(r, ctx) {
 export function senderApprovalCardHTML(r, ctx) {
   return (
     `<div class="quickpay-card quickpay-pending">` + COIN +
-    `Waiting for the GM to approve your payment of ${amt(r, ctx)} to ${b(r.recipient?.name)}. No coins have moved yet.` +
+    t("QUICKPAY.card.waitingApproval", { amount: amt(r, ctx), to: b(r.recipient?.name) }) +
     noteHTML(r) +
-    (ctx.expiresText ? `<div class="quickpay-expiry">Expires ${esc(ctx.expiresText)}</div>` : "") +
-    `<div class="quickpay-buttons">${button("cancel", r.id, "Cancel")}</div></div>`
+    (ctx.expiresText ? `<div class="quickpay-expiry">${esc(t("QUICKPAY.card.expires", { time: ctx.expiresText }))}</div>` : "") +
+    `<div class="quickpay-buttons">${button("cancel", r.id, t("QUICKPAY.btn.cancel"))}</div></div>`
   );
 }
 
 /** What an approval card turns into once the GM has approved (the transfer then posts its own card). */
 export function approvedSettledHTML(r, ctx) {
-  return `<div class="quickpay-card quickpay-settled quickpay-completed">` + COIN + `The GM approved the payment of ${amt(r, ctx)} to ${b(r.recipient?.name)}.</div>`;
+  return `<div class="quickpay-card quickpay-settled quickpay-completed">` + COIN + t("QUICKPAY.card.approved", { amount: amt(r, ctx), to: b(r.recipient?.name) }) + `</div>`;
 }
 
 /** Whisper list for the result message. null means everyone (public). */

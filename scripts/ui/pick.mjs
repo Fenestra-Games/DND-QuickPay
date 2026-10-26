@@ -1,3 +1,4 @@
+import { t } from "../i18n.mjs";
 /**
  * Click a token on the canvas to choose it. The caller hides its own window first.
  *
@@ -30,8 +31,8 @@ export function pickTokens({ allow, multiple = false, onPick = () => {} }) {
     if (!surface) return resolve([]);
     const picked = [];
     const hint = multiple
-      ? "Click tokens to add them. Right-click, Enter, or Escape when you're done."
-      : "Click a token to choose it. Right-click or Escape to cancel.";
+      ? t("QUICKPAY.pick.many")
+      : t("QUICKPAY.pick.one");
     ui.notifications.info(hint, { permanent: false });
     const previousCursor = surface.style.cursor;
     surface.style.cursor = "crosshair";

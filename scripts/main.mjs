@@ -8,6 +8,7 @@ import { initEntryPoints } from "./ui/entry-points.mjs";
 import { initGMTools } from "./ui/gm-tools.mjs";
 import { worldOptions } from "./options-store.mjs";
 import * as ledger from "./ledger.mjs";
+import { t } from "./i18n.mjs";
 
 let engine = null;
 const getEngine = () => (engine ??= buildEngine());
@@ -31,7 +32,7 @@ Hooks.once("ready", () => {
   if (game.system.id !== "dnd5e") return;
 
   if (!game.modules.get("socketlib")?.active) {
-    ui.notifications.error("DND QuickPay needs the socketlib module to be installed and enabled.");
+    ui.notifications.error(t("QUICKPAY.err.needSocketlib"));
     return;
   }
 

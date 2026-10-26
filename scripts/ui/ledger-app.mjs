@@ -3,6 +3,7 @@ import { getDenominations } from "../adapters/dnd5e.mjs";
 import { esc } from "../core/format.mjs";
 import { filterEntries, partyNames, rowsHTML, headerHTML, totals } from "../core/ledger-format.mjs";
 import { listReadable, readEntries } from "../ledger.mjs";
+import { t } from "../i18n.mjs";
 
 const { ApplicationV2 } = foundry.applications.api;
 
@@ -14,7 +15,7 @@ export class LedgerViewer extends ApplicationV2 {
     id: "dnd-quickpay-ledger-viewer",
     classes: ["dnd-quickpay", "quickpay-viewer"],
     tag: "div",
-    window: { title: "QuickPay Ledgers", resizable: true },
+    window: { title: "QUICKPAY.viewer.title", resizable: true },
     position: { width: 760, height: "auto" },
   };
 
@@ -32,20 +33,20 @@ export class LedgerViewer extends ApplicationV2 {
 
   _replaceHTML({ ledgers }, content) {
     if (!ledgers.length) {
-      content.innerHTML = "<p>You can't open any ledgers yet.</p>";
+      content.innerHTML = `<p>${esc(t("QUICKPAY.viewer.none"))}</p>`;
       return;
     }
     const opts = ledgers
-      .map((l) => `<option value="${esc(l.id)}"${l.id === this.ledgerId ? " selected" : ""}>${esc(l.kind === "personal" ? "Personal: " : "")}${esc(l.name)}</option>`)
+      .map((l) => `<option value="${esc(l.id)}"${l.id === this.ledgerId ? " selected" : ""}>${esc(l.kind === "personal" ? t("QUICKPAY.viewer.personalPrefix") : "")}${esc(l.name)}</option>`)
       .join("");
     content.innerHTML =
       `<div class="quickpay-controls">` +
       `<select name="ledger">${opts}</select>` +
-      `<input type="search" name="text" placeholder="Search" value="${esc(this.filters.text)}">` +
-      `<select name="status">${STATUSES.map((s) => `<option value="${s}"${s === this.filters.status ? " selected" : ""}>${esc(s)}</option>`).join("")}</select>` +
+      `<input type="search" name="text" placeholder="${esc(t("QUICKPAY.viewer.search"))}" value="${esc(this.filters.text)}">` +
+      `<select name="status">${STATUSES.map((s) => `<option value="${s}"${s === this.filters.status ? " selected" : ""}>${esc(t(`QUICKPAY.status.${s}`))}</option>`).join("")}</select>` +
       `<select name="party"></select>` +
-      `<select name="direction"><option value="">in and out</option><option value="in">money in</option><option value="out">money out</option></select>` +
-      `<select name="sort"><option value="newest">newest first</option><option value="oldest">oldest first</option></select>` +
+      `<select name="direction"><option value="">${esc(t("QUICKPAY.viewer.inAndOut"))}</option><option value="in">${esc(t("QUICKPAY.viewer.moneyIn"))}</option><option value="out">${esc(t("QUICKPAY.viewer.moneyOut"))}</option></select>` +
+      `<select name="sort"><option value="newest">${esc(t("QUICKPAY.viewer.newest"))}</option><option value="oldest">${esc(t("QUICKPAY.viewer.oldest"))}</option></select>` +
       `</div><div class="quickpay-summary"></div><div class="quickpay-scroll"></div>`;
     this._wire(content);
     this._fillTable(content);
@@ -70,7 +71,7 @@ export class LedgerViewer extends ApplicationV2 {
     const data = readEntries(this.ledgerId);
     const scroll = content.querySelector(".quickpay-scroll");
     if (!data) {
-      scroll.innerHTML = "<p>That ledger isn't available to you.</p>";
+      scroll.innerHTML = `<p>${esc(t("QUICKPAY.viewer.unavailable"))}</p>`;
       return;
     }
     const personal = data.kind === "personal";
@@ -79,7 +80,7 @@ export class LedgerViewer extends ApplicationV2 {
     const party = content.querySelector("[name=party]");
     const names = partyNames(data.entries);
     party.innerHTML =
-      `<option value="">everyone</option>` +
+      `<option value="">${esc(t("QUICKPAY.viewer.everyone"))}</option>` +
       names.map((n) => `<option value="${esc(n)}"${n === this.filters.party ? " selected" : ""}>${esc(n)}</option>`).join("");
     const dir = content.querySelector("[name=direction]");
     dir.hidden = !personal;
@@ -89,12 +90,12 @@ export class LedgerViewer extends ApplicationV2 {
     const rows = filterEntries(data.entries, this.filters, denoms);
     const summary = content.querySelector(".quickpay-summary");
     if (personal) {
-      const t = totals(rows, denoms);
-      summary.innerHTML = `<p class="quickpay-totals">In: ${esc(t.inText)} &middot; Out: ${esc(t.outText)} &middot; Net: ${esc(t.netText)} <small>(completed only)</small></p>`;
+      const tot = totals(rows, denoms);
+      summary.innerHTML = `<p class="quickpay-totals">${esc(t("QUICKPAY.ledger.totals", { in: tot.inText, out: tot.outText, net: tot.netText }))} <small>${esc(t("QUICKPAY.viewer.completedOnly"))}</small></p>`;
     } else summary.innerHTML = "";
     scroll.innerHTML = rows.length
       ? `<table class="quickpay-ledger-table"><thead>${headerHTML(personal)}</thead><tbody>${rowsHTML(rows, denoms)}</tbody></table>`
-      : "<p><em>Nothing matches.</em></p>";
+      : `<p><em>${esc(t("QUICKPAY.viewer.nothing"))}</em></p>`;
   }
 }
 

@@ -1,4 +1,5 @@
 import { MODULE_ID, DEFAULT_OFFLINE_MESSAGE } from "./constants.mjs";
+import { t } from "./i18n.mjs";
 
 let socket = null;
 let socketFailed = false;
@@ -24,13 +25,13 @@ export function initSocket(getEngine) {
       async function (...args) {
         const userId = this?.socketdata?.userId;
         if (!userId || !game.users.has(userId)) {
-          return { ok: false, error: "Couldn't identify who made this request." };
+          return { ok: false, error: t("QUICKPAY.err.noIdentity") };
         }
         try {
           return await getEngine()[name](userId, ...args);
         } catch (err) {
           console.error(`${MODULE_ID} | ${name} failed`, err);
-          return { ok: false, error: "Something went wrong on the GM's side. Check the GM's console." };
+          return { ok: false, error: t("QUICKPAY.err.gmSide") };
         }
       };
 
@@ -40,7 +41,7 @@ export function initSocket(getEngine) {
 
 export function offlineText() {
   const custom = String(game.settings.get(MODULE_ID, "offlineMessage") ?? "").trim();
-  return custom || "A GM needs to be online to process this transaction.";
+  return custom || t("QUICKPAY.err.gmOffline");
 }
 
 /** Call the engine on the GM's client. Resolves to the engine's result object. */
@@ -49,8 +50,8 @@ export async function callGM(name, ...args) {
     return {
       ok: false,
       error: socketFailed
-        ? "DND QuickPay couldn't connect to socketlib. Check the console for errors."
-        : "socketlib isn't ready yet.",
+        ? t("QUICKPAY.err.socketFailed")
+        : t("QUICKPAY.err.socketNotReady"),
     };
   }
   if (!game.users.activeGM) {
@@ -62,7 +63,7 @@ export async function callGM(name, ...args) {
     return await socket.executeAsGM(name, ...args);
   } catch (err) {
     console.error(`${MODULE_ID} | ${name} call failed`, err);
-    return { ok: false, error: "The GM's client didn't respond." };
+    return { ok: false, error: t("QUICKPAY.err.gmNoResponse") };
   }
 }
 

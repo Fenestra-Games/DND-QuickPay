@@ -1,108 +1,104 @@
 # DND QuickPay
 
-A Foundry VTT module for sending coins between players, GMs, actors, and containers. Built for Foundry v14.367+ and dnd5e, with socketlib required. A system adapter layer is in place so other systems can be added later.
+Send coins between players, GMs, actors, and containers in Foundry VTT, with escrow, automatic change, approvals, and ledgers.
 
-**Status:** stage 4 is mostly in: an options window with a permission grid, approvals, and limits. Players can send coins from a dialog, opened from the character sheet or the token HUD. Predefined targets are still to come.
+> [!IMPORTANT]
+> **AMEND:** Add a banner screenshot or a short GIF of a transfer here (Send dialog, then the chat card). Suggested size: about 900 px wide.
+
+![Banner placeholder](docs/banner.png)
+
+- **Foundry:** v14.367 or newer
+- **System:** dnd5e (a system adapter layer is in place for others later)
+- **Requires:** [socketlib](https://foundryvtt.com/packages/socketlib)
+- **Licence:** MIT
+- **Author:** Fenestra Games (support@fenestra.gripe). Made using Claude AI.
+
+Full documentation is in the [wiki](https://github.com/Thriceisalways/DND-QuickPay/wiki).
+
+## What it does
+
+- Send coins from the character sheet, the token HUD, or the GM toolbar.
+- Coins leave the sender straight away (escrow) and come back if the transfer is declined, expires, or is cancelled.
+- Change is made automatically. Electrum is only used as a last resort.
+- Recipients can be required to accept. GM-side actors and containers accept automatically.
+- Send the same amount to up to 25 recipients at once.
+- Permissions, approvals, and limits for players, set by the GM.
+- Business ledgers and per-character personal ledgers, kept as journals, with a searchable viewer.
+- Public containers that any player may pay into.
+- GM-only transfers can appear to players as "Unknown deposit" or "Pickpocketed".
+- Gold coin icons throughout.
 
 ## Install
 
-Use the manifest URL from a GitHub release:
-`https://github.com/<user>/<repo>/releases/latest/download/module.json`
+1. In Foundry, open **Add-on Modules, Install Module**.
+2. Paste this into **Manifest URL**: `https://github.com/Thriceisalways/DND-QuickPay/releases/latest/download/module.json`
+3. Install **socketlib** as well.
+4. Enable both in your world.
 
-Install socketlib too, then enable both in your world.
+> [!IMPORTANT]
+> **AMEND:** If you later list the module in the Foundry package directory, replace this section with a link to the package page.
 
-## How transfers work
+## Quick start
 
-- Players can't edit other actors, so every transfer runs on the GM's client through socketlib. If no GM is online, the player sees "This transaction needs Bank Manager approval." (editable in module settings) and nothing is taken.
-- The sender's coins leave immediately (escrow). Change is made automatically, and electrum is only handed back as change if nothing else works.
-- Sending to a **player-owned actor** waits for that actor's owner to accept, unless the recipient owns both ends or has turned acceptance off (flag `dnd-quickpay.requiresAcceptance = false`). Sending to GM-side actors and containers completes straight away.
-- A pending transfer expires after 12 in-world hours (setting), which returns the escrow. It only counts down when the world clock moves, for example on a long rest.
-- Decline, expire, and cancel all return the coins to the sender. A GM can accept, decline, or cancel anything.
-- Players can send from actors they own to any actor, to containers they own, or to containers flagged `dnd-quickpay.publicRecipient = true`. Only GMs can create coins from nowhere (null sender) or remove them (null recipient).
+1. Open a character sheet, click the three dots in the header, and choose **Send coins**.
+2. Choose a recipient (or target a token first and it is chosen for you), type an amount, and send.
+3. The recipient's owner gets a chat card with **Accept** and **Decline**.
+4. GMs can open **Configure Settings, Module Settings, DND QuickPay** to set permissions, limits, and ledgers.
 
-## Sending coins
+> [!IMPORTANT]
+> **AMEND:** Add a screenshot of the Send dialog showing the balance, the preview, and the recipient chips.
 
-- **Character sheet:** open the sheet's header menu (the three dots) and choose Send coins. GMs also get Receive coins. Everyone gets Coin ledgers, and Public containers if the character has a container.
-- **Token HUD:** right-click a token you own. The coin buttons are in the left column. GMs get a second button to receive.
-- **GM toolbar:** GMs get a DND QuickPay group in the scene controls with Send, Receive, Ledgers, Public containers, Create personal ledgers, and Who can create ledgers.
-- The dialog shows what the sender holds, then a live preview of what will be paid, any change coming back, and what is left. Amount boxes start blank.
-- **Targets prefill:** anything you have targeted on the canvas is already chosen as a recipient when the dialog opens.
-- **Pick on the scene:** the crosshair button hides the dialog so you can click tokens. Right-click, Enter, or Escape finishes. Players can only pick tokens they can see.
-- **Several recipients:** add as many as you like (up to 25). Each gets the full amount as its own transfer, with its own chat card and its own acceptance. The module checks that the sender can cover the whole total and that every recipient is allowed before any coin moves.
-- Players can choose from targeted tokens, tokens they can see on the scene, player characters, their own containers, and public containers. GMs also get every actor and container, plus Nowhere (create or remove coins).
-- **Public containers:** tick a container in the Public containers window and any player can send coins to it. Owners can tick their own, and GMs can tick any.
-- From a macro: `game.modules.get("dnd-quickpay").api.openSend()` opens the dialog for your selected token, or your own character if nothing is selected. To receive as a GM: `game.modules.get("dnd-quickpay").api.openSend(canvas.tokens.controlled[0].actor, "receive")`.
+## Documentation
 
-## Options
+| Page | What is in it |
+| --- | --- |
+| [Installation](https://github.com/Thriceisalways/DND-QuickPay/wiki/Installation) | Install, requirements, updating |
+| [Sending coins](https://github.com/Thriceisalways/DND-QuickPay/wiki/Sending-coins) | The Send dialog, targets, multiple recipients |
+| [Permissions and approvals](https://github.com/Thriceisalways/DND-QuickPay/wiki/Permissions-and-approvals) | What players may do, GM approval, limits |
+| [Ledgers](https://github.com/Thriceisalways/DND-QuickPay/wiki/Ledgers) | Business and personal ledgers, the viewer |
+| [Public containers](https://github.com/Thriceisalways/DND-QuickPay/wiki/Public-containers) | Letting players pay into a container |
+| [Options reference](https://github.com/Thriceisalways/DND-QuickPay/wiki/Options-reference) | Every setting |
+| [Macros and API](https://github.com/Thriceisalways/DND-QuickPay/wiki/Macros-and-API) | Console, macros, and hooks |
+| [Translating](https://github.com/Thriceisalways/DND-QuickPay/wiki/Translating) | Adding another language |
+| [FAQ and troubleshooting](https://github.com/Thriceisalways/DND-QuickPay/wiki/FAQ-and-troubleshooting) | Common problems |
 
-Open **Configure Settings, Module Settings, DND QuickPay**. Each section below is its own button on that page, like other modules' settings. Players see **My preferences** and **Public containers**, and GMs see all of them. The Options entry in a sheet's header menu and the sliders button in the GM toolbar open a small window with the same buttons.
+## How a transfer works, briefly
 
-- **My preferences:** your default visibility and ledger, remembering your last recipients, a confirm step before sending, a notice when coins arrive, coins you never want used, and whether your own characters must accept coins.
-- **Permissions:** a grid of what players may do. Each row is Allowed, Needs GM approval, or Blocked. A player must always own the actor they pay from, and GMs are never restricted. With Needs GM approval, nothing moves until a GM approves, and the sender can cancel while they wait. Requests expire like pending transfers.
-- **Transfers and limits:** acceptance defaults, whether players may change them, whether GM gifts skip acceptance, expiry hours, the offline GM message, default visibility, the waiting card, a confirm threshold (100 gp by default), a per-transfer cap for players, and the most recipients per send.
-- **Ledgers:** who can create them, who can read new ones, personal ledgers on or off, automatic creation, whether GM-only transfers are masked, and who can mark a container public.
-- **Public containers:** tick the containers anyone may send coins to.
-- **Coins:** hide denominations for everyone.
-- **Characters:** per player character, whether they must accept coins and whether they get a personal ledger. NPC personal ledgers are switched on from the console with `game.modules.get("dnd-quickpay").api.ledgers.setPersonal(actorUuid, true)`.
+Players can't edit other actors, so every transfer runs on the GM's client through socketlib. If no GM is online, the player sees "This transaction needs Bank Manager approval." (the text is editable) and nothing is taken. A pending transfer lasts 12 in-world hours by default, and only counts down when the world clock moves.
 
-A container's public flag lives on the container itself, so a player with console access could set it even when only the GM is meant to. Treat that setting as a guide for honest players.
+## Known limitations
 
-## Chat cards
+> [!IMPORTANT]
+> **AMEND:** Review this list before release and update it if anything has changed.
 
-- The sender always sees a result card. Visibility `public` (the default) shows everyone, `gm-recipient` shows the GMs, the sender, and the recipient's owners, and `gm` shows the GMs and the sender.
-- When acceptance is needed, the recipient's owners and the GMs get a card with Accept and Decline buttons (GMs also get Cancel). The sender gets a waiting card with Cancel. These turn into plain text once the transfer ends.
+- **Public container flag:** it is stored on the container item. A player who is comfortable in the browser console could set it themselves, even when only the GM is meant to. Treat that option as a guide for honest players.
+- **Pending list, log, and options:** they are stored in world settings. They hold no secrets, but a player who reads the console can see them.
+- **Log size:** the global transaction log keeps the latest 2000 transfers. Ledgers (journals) keep up to 1000 entries each.
+- **Mid-batch failures:** when sending to several recipients, every recipient and the total are checked first. If something unexpected fails part-way, transfers already completed are not rolled back.
+- **dnd5e only:** other systems need an adapter.
+- **Tested mainly against stand-ins:** the automated tests cover the coin maths and engine thoroughly, and the Foundry wiring against stand-ins. Please report anything odd you find in a real world.
 
-## Ledgers
+## Reporting problems
 
-- **Business ledgers** are named journals (for example "Jims Pickles") in a "QuickPay Ledgers" folder. Tag a transfer with `ledgerId` when sending, or add or change it later with `qp.amend(id, { ledgerId, note })`. Who can read a ledger is that journal's permission (Observer or better). Only GMs can create ledgers unless you change it with `qp.setLedgerCreators({ mode: "all" })` or `{ mode: "users", users: [userIds] }`.
-- **Personal ledgers** are one journal per player character, in a "QuickPay Personal Ledgers" folder, made the first time a transfer touches the character. Owners can read their own. They show money in and out from the character's point of view and record every ended transfer, including declined and expired ones. A GM-only transfer shows the player as an "Unknown deposit" or "Unknown withdrawal" with no source and no note. NPCs have no personal ledger unless you switch one on with `qp.ledgers.setPersonal(actorUuid, true)`.
-- `qp.ledgers.open()` opens a searchable viewer with filters for status, person, and direction. The journal page itself is a static table of completed transfers.
+Open an issue at https://github.com/Thriceisalways/DND-QuickPay/issues, or email support@fenestra.gripe. Please include your Foundry version, the module version, and any red console errors.
 
-## Console API
+> [!IMPORTANT]
+> **AMEND:** Decide whether you want a support Discord or a Ko-fi/Patreon link here.
 
-```js
-const qp = game.modules.get("dnd-quickpay").api;
+## Translating
 
-await qp.request({
-  senderUuid: "Actor.xxxx",          // null = coins from nowhere (GM only)
-  recipientUuid: "Actor.yyyy",       // actor or container UUID; null = remove coins (GM only)
-  amount: { gp: 2, sp: 5 },
-  note: "Thanks for the rope",
-  visibility: "public",              // "public" | "gm-recipient" | "gm"
-  ledgerId: null                     // a business ledger id from qp.ledgers.list()
-});
+Every piece of text lives in `lang/en.json`. To add a language, copy that file to `lang/<code>.json` (for example `lang/fr.json`), translate the values and leave the keys alone, then add an entry to `languages` in `module.json`. See the [wiki](https://github.com/Thriceisalways/DND-QuickPay/wiki/Translating).
 
-qp.pending();                        // your pending transfers (GM sees all)
-await qp.accept(id);  await qp.decline(id);  await qp.cancel(id);
-qp.log();                            // GM only: every resolved transfer
-await qp.amend(id, { note: "fixed", ledgerId });
-await qp.ledgers.create("Jims Pickles");  qp.ledgers.list();  qp.ledgers.open();
-await qp.ledgers.createPersonal();   // GM only: journals for every player character
-await qp.expireNow();                // GM only
-```
+## Development
 
-Hooks for other modules: `dnd-quickpay.transferPending`, `dnd-quickpay.transferResolved`, and `dnd-quickpay.transferAmended`, both called with the transfer record.
-
-## Known limits at this stage
-
-- Approval requests and the options are stored in world settings. They hold no secrets, but a player who reads the console can see them.
-
-- The send dialog and entry points have only been tested against stand-ins. Treat them as new until you've run them in your world.
-- The Foundry-side ledger and chat code is tested against stand-ins only, so treat it as new until you have run it in your world.
-- The pending list and the log live in world settings, so a technical player can read them from the console. The ledger stage moves them to GM-only journals. The log is capped at the latest 2000 transfers until then.
-- The permission rules are fixed defaults. The configurable matrix comes later.
-
-## Tests
+Design notes for maintainers are in [docs/DESIGN.md](docs/DESIGN.md).
 
 ```
 npm test
 ```
 
-Runs the coin maths, the engine (escrow, permissions, expiry, concurrency, and a randomised check that coins are never created or destroyed), and a smoke test of the Foundry wiring against stand-ins for Foundry's globals. No dependencies.
+Runs the manifest checks, translation checks, coin maths, engine (escrow, permissions, expiry, concurrency, and a randomised check that coins are never created or destroyed), the options and form logic, and smoke tests of the Foundry wiring against stand-ins. There are no dependencies.
 
-## Roadmap
+## Licence
 
-1. Coin maths and dnd5e adapter (done)
-2. GM-side executor, escrow, and pending transfers (done)
-3. Ledgers, chat messages, send dialog, sheet header and token HUD buttons
-4. Options menus (GM and player), predefined targets, public container flagging
+MIT. See [LICENSE](LICENSE).

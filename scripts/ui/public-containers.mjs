@@ -2,6 +2,7 @@ import { MODULE_ID, FLAGS } from "../constants.mjs";
 import { holdsCurrency } from "../adapters/dnd5e.mjs";
 import { esc } from "../core/format.mjs";
 import { worldOptions } from "../options-store.mjs";
+import { t } from "../i18n.mjs";
 
 // The base class only exists inside Foundry. A stand-in lets the file load in tests.
 const ApplicationV2 = globalThis.foundry?.applications?.api?.ApplicationV2 ?? class {};
@@ -21,7 +22,7 @@ export class PublicContainers extends ApplicationV2 {
     id: "dnd-quickpay-public-containers",
     classes: ["dnd-quickpay", "quickpay-public"],
     tag: "div",
-    window: { title: "Public containers", icon: "fa-solid fa-coins quickpay-gold", resizable: true },
+    window: { title: "QUICKPAY.menu.containers", icon: "fa-solid fa-coins quickpay-gold", resizable: true },
     position: { width: 420, height: "auto" },
   };
 
@@ -39,12 +40,12 @@ export class PublicContainers extends ApplicationV2 {
       `${a.parent.name}${a.name}`.localeCompare(`${b.parent.name}${b.name}`),
     );
     if (!list.length) {
-      content.innerHTML = "<p>No containers to show.</p>";
+      content.innerHTML = `<p>${esc(t("QUICKPAY.containers.none"))}</p>`;
       return;
     }
     content.innerHTML =
-      `<div class="quickpay-form"><p>Anyone can send coins to a ticked container.</p>` +
-      `<input type="search" name="filter" placeholder="Search">` +
+      `<div class="quickpay-form"><p>${esc(t("QUICKPAY.containers.hint"))}</p>` +
+      `<input type="search" name="filter" placeholder="${esc(t("QUICKPAY.viewer.search"))}">` +
       `<div class="quickpay-scroll">` +
       list
         .map(
@@ -70,7 +71,7 @@ export class PublicContainers extends ApplicationV2 {
         else await item.unsetFlag(MODULE_ID, FLAGS.publicRecipient);
       } catch (err) {
         console.error(`${MODULE_ID} | could not change that container`, err);
-        ui.notifications.warn("Couldn't change that container. You need to own it.");
+        ui.notifications.warn(t("QUICKPAY.containers.failed"));
         box.checked = !box.checked;
       } finally {
         box.disabled = false;

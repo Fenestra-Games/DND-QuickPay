@@ -1,8 +1,17 @@
 {
   "id": "dnd-quickpay",
+  "type": "module",
   "title": "DND QuickPay",
   "description": "Send coins between players, GMs, actors, and containers, with escrow, change-making, and ledgers.",
-  "version": "0.6.1",
+  "version": "1.1.0",
+  "authors": [
+    {
+      "name": "Fenestra Games",
+      "email": "support@fenestra.gripe"
+    }
+  ],
+  "license": "LICENSE",
+  "readme": "README.md",
   "socket": true,
   "compatibility": {
     "minimum": "14.367",
@@ -25,11 +34,20 @@
   "esmodules": [
     "scripts/main.mjs"
   ],
-  "languages": [],
   "styles": [
     "styles/quickpay.css"
   ],
-  "url": "https://github.com/Thriceisalways/TTRPG-instantpay",
-  "manifest": "https://github.com/Thriceisalways/TTRPG-instantpay/releases/latest/download/module.json",
-  "download": "https://github.com/Thriceisalways/TTRPG-instantpay/releases/download/v0.6.1/module.zip"
+  "languages": [
+    {
+      "lang": "en",
+      "name": "English",
+      "path": "lang/en.json"
+    }
+  ],
+  "media": [],
+  "url": "https://github.com/Thriceisalways/DND-QuickPay",
+  "manifest": "https://github.com/Thriceisalways/DND-QuickPay/releases/latest/download/module.json",
+  "download": "https://github.com/Thriceisalways/DND-QuickPay/releases/download/v1.1.0/module.zip",
+  "bugs": "https://github.com/Thriceisalways/DND-QuickPay/issues",
+  "changelog": "https://github.com/Thriceisalways/DND-QuickPay/releases"
 }

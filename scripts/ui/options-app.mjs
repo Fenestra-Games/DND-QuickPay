@@ -1,6 +1,7 @@
 import { MODULE_ID, FLAGS } from "../constants.mjs";
 import { getDenominations } from "../adapters/dnd5e.mjs";
 import { esc } from "../core/format.mjs";
+import { t } from "../i18n.mjs";
 import { PERMISSION_RULES } from "../core/options.mjs";
 import { fromFormValues, triValue } from "../core/options-form.mjs";
 import { worldOptions, permissionGrid, playerOptions, savePlayerOptions } from "../options-store.mjs";
@@ -23,8 +24,8 @@ const number = (name, value, min, max) =>
 const section = (title, ...rows) => `<section class="quickpay-section"><h3>${esc(title)}</h3>${rows.join("")}</section>`;
 const note = (text) => `<p class="quickpay-note-text">${esc(text)}</p>`;
 
-const VIS = [["public", "Everyone"], ["gm-recipient", "GM and recipient"], ["gm", "GM only"]];
-const TRI = [["default", "Use default"], ["on", "On"], ["off", "Off"]];
+const VIS = () => [["public", t("QUICKPAY.vis.public")], ["gm-recipient", t("QUICKPAY.vis.gmRecipient")], ["gm", t("QUICKPAY.vis.gm")]];
+const TRI = () => [["default", t("QUICKPAY.opt.useDefault")], ["on", t("QUICKPAY.opt.on")], ["off", t("QUICKPAY.opt.off")]];
 
 /** Player characters: character actors that a non-GM user owns. */
 const playerCharacters = () =>
@@ -46,29 +47,29 @@ const PANES = {
     const myCharacters = playerCharacters().filter((a) => a.testUserPermission(game.user, "OWNER"));
     return (
       section(
-        "Sending",
-        row("Default visibility", select("p.defaultVisibility", mine.defaultVisibility, [["", "Use the world default"], ...VIS])),
-        row("Default ledger", select("p.defaultLedger", mine.defaultLedger, [["", "None"], ...ledgers.map((l) => [l.id, l.name])])),
-        toggle("p.rememberRecipients", mine.rememberRecipients, "Remember my last recipients", "They are chosen for you the next time you open Send."),
-        toggle("p.confirmBeforeSend", mine.confirmBeforeSend, "Ask me to confirm before sending"),
+        t("QUICKPAY.sec.sending"),
+        row(t("QUICKPAY.opt.defaultVisibility"), select("p.defaultVisibility", mine.defaultVisibility, [["", t("QUICKPAY.opt.worldDefault")], ...VIS()])),
+        row(t("QUICKPAY.opt.defaultLedger"), select("p.defaultLedger", mine.defaultLedger, [["", t("QUICKPAY.opt.none")], ...ledgers.map((l) => [l.id, l.name])])),
+        toggle("p.rememberRecipients", mine.rememberRecipients, t("QUICKPAY.opt.rememberRecipients"), t("QUICKPAY.opt.rememberRecipientsHint")),
+        toggle("p.confirmBeforeSend", mine.confirmBeforeSend, t("QUICKPAY.opt.confirmBeforeSend")),
       ) +
-      section("Receiving", toggle("p.notifyOnReceive", mine.notifyOnReceive, "Tell me when coins arrive")) +
+      section(t("QUICKPAY.sec.receiving"), toggle("p.notifyOnReceive", mine.notifyOnReceive, t("QUICKPAY.opt.notifyOnReceive"))) +
       section(
-        "Coins I never want used",
-        note("These are skipped when you pay, and when change is made for you."),
+        t("QUICKPAY.sec.myHidden"),
+        note(t("QUICKPAY.note.myHidden")),
         coinChecks("p.hide", mine.hiddenDenominations, denoms),
       ) +
       (gm
         ? ""
         : section(
-            "Coins sent to my characters",
+            t("QUICKPAY.sec.myCharacters"),
             o.playersMayChangeAcceptance
               ? myCharacters.length
                 ? myCharacters
-                    .map((a) => row(a.name, select(`acc.${a.id}`, triValue(a.getFlag(MODULE_ID, FLAGS.requiresAcceptance)), TRI), "Do you need to accept coins sent to this character?"))
+                    .map((a) => row(a.name, select(`acc.${a.id}`, triValue(a.getFlag(MODULE_ID, FLAGS.requiresAcceptance)), TRI()), t("QUICKPAY.opt.acceptCharacterHint")))
                     .join("")
-                : note("You don't own any characters.")
-              : note("The GM has set acceptance for everyone."),
+                : note(t("QUICKPAY.note.noCharacters"))
+              : note(t("QUICKPAY.note.gmSetAcceptance")),
           ))
     );
   },
@@ -76,11 +77,11 @@ const PANES = {
   permissions() {
     const grid = permissionGrid();
     return (
-      note("What players may do. A player must always own the actor they pay from, and GMs are never restricted.") +
+      note(t("QUICKPAY.note.permissions")) +
       section(
-        "Who a player may pay",
-        ...PERMISSION_RULES.map(({ key, label }) =>
-          row(label, select(`perm.${key}`, grid[key], [["allow", "Allowed"], ["approval", "Needs GM approval"], ["block", "Blocked"]])),
+        t("QUICKPAY.sec.whoPay"),
+        ...PERMISSION_RULES.map(({ key, labelKey }) =>
+          row(t(labelKey), select(`perm.${key}`, grid[key], [["allow", t("QUICKPAY.perm.allow")], ["approval", t("QUICKPAY.perm.approval")], ["block", t("QUICKPAY.perm.block")]])),
         ),
       )
     );
@@ -90,26 +91,26 @@ const PANES = {
     const o = worldOptions();
     return (
       section(
-        "Acceptance",
-        toggle("opt.acceptanceDefault", o.acceptanceDefault, "Player characters must accept incoming coins", "The default for each character."),
-        toggle("opt.playersMayChangeAcceptance", o.playersMayChangeAcceptance, "Players may change that for their own characters"),
-        toggle("opt.gmGiftsSkipAcceptance", o.gmGiftsSkipAcceptance, "Coins from a GM skip acceptance"),
+        t("QUICKPAY.sec.acceptance"),
+        toggle("opt.acceptanceDefault", o.acceptanceDefault, t("QUICKPAY.opt.acceptanceDefault"), t("QUICKPAY.opt.acceptanceDefaultHint")),
+        toggle("opt.playersMayChangeAcceptance", o.playersMayChangeAcceptance, t("QUICKPAY.opt.playersMayChange")),
+        toggle("opt.gmGiftsSkipAcceptance", o.gmGiftsSkipAcceptance, t("QUICKPAY.opt.gmSkip")),
       ) +
       section(
-        "Timing",
-        row("Pending transfers expire after", number("expiryHours", Number(game.settings.get(MODULE_ID, "expiryHours")) || 12, 1, 720), "In-world hours. The clock only moves when world time does."),
-        row("Message when no GM is online", `<input type="text" name="offlineMessage" value="${esc(game.settings.get(MODULE_ID, "offlineMessage") ?? "")}" maxlength="200">`),
+        t("QUICKPAY.sec.timing"),
+        row(t("QUICKPAY.opt.expiry"), number("expiryHours", Number(game.settings.get(MODULE_ID, "expiryHours")) || 12, 1, 720), t("QUICKPAY.opt.expiryHint")),
+        row(t("QUICKPAY.opt.offlineMessage"), `<input type="text" name="offlineMessage" value="${esc(game.settings.get(MODULE_ID, "offlineMessage") ?? "")}" maxlength="200">`),
       ) +
       section(
-        "Chat",
-        row("Default visibility of new transfers", select("opt.defaultVisibility", o.defaultVisibility, VIS)),
-        toggle("opt.waitingCard", o.waitingCard, "Show the sender a waiting card"),
+        t("QUICKPAY.sec.chat"),
+        row(t("QUICKPAY.opt.worldVisibility"), select("opt.defaultVisibility", o.defaultVisibility, VIS())),
+        toggle("opt.waitingCard", o.waitingCard, t("QUICKPAY.opt.waitingCard")),
       ) +
       section(
-        "Limits",
-        row("Ask to confirm above", number("opt.confirmAboveGp", o.confirmAboveGp, 0, 1000000000), "In gp. 0 means never."),
-        row("Largest transfer a player may make", number("opt.maxPerTransferGp", o.maxPerTransferGp, 0, 1000000000), "In gp. 0 means no limit."),
-        row("Most recipients in one send", number("opt.maxRecipients", o.maxRecipients, 1, 25)),
+        t("QUICKPAY.sec.limits"),
+        row(t("QUICKPAY.opt.confirmAbove"), number("opt.confirmAboveGp", o.confirmAboveGp, 0, 1000000000), t("QUICKPAY.opt.confirmAboveHint")),
+        row(t("QUICKPAY.opt.maxPerTransfer"), number("opt.maxPerTransferGp", o.maxPerTransferGp, 0, 1000000000), t("QUICKPAY.opt.maxPerTransferHint")),
+        row(t("QUICKPAY.opt.maxRecipients"), number("opt.maxRecipients", o.maxRecipients, 1, 25)),
       )
     );
   },
@@ -120,19 +121,19 @@ const PANES = {
     const players = game.users.contents.filter((u) => !u.isGM);
     return (
       section(
-        "Creating ledgers",
-        row("Who can create ledgers", select("creatorsMode", creators.mode, [["gm", "Only the GM"], ["users", "The GM and chosen players"], ["all", "Everyone"]])),
-        note("Chosen players:"),
+        t("QUICKPAY.sec.creating"),
+        row(t("QUICKPAY.creators.label"), select("creatorsMode", creators.mode, [["gm", t("QUICKPAY.creators.gm")], ["users", t("QUICKPAY.creators.users")], ["all", t("QUICKPAY.vis.public")]])),
+        note(t("QUICKPAY.note.chosen")),
         ...players.map((u) => toggle(`creator.${u.id}`, creators.users.includes(u.id), u.name)),
-        row("New ledgers can be read by", select("opt.ledgerDefaultReaders", o.ledgerDefaultReaders, [["gm", "Only the GM and their creator"], ["all", "Everyone"]])),
+        row(t("QUICKPAY.opt.ledgerReaders"), select("opt.ledgerDefaultReaders", o.ledgerDefaultReaders, [["gm", t("QUICKPAY.opt.readersGm")], ["all", t("QUICKPAY.vis.public")]])),
       ) +
       section(
-        "Personal ledgers",
-        toggle("opt.personalLedgers", o.personalLedgers, "Personal ledgers are on", "One journal per player character, recording their money in and out."),
-        toggle("opt.autoCreatePersonal", o.autoCreatePersonal, "Create them for every player character when the world loads"),
-        toggle("opt.maskGmOnly", o.maskGmOnly, "GM-only transfers show players an unknown source and no note"),
+        t("QUICKPAY.sec.personal"),
+        toggle("opt.personalLedgers", o.personalLedgers, t("QUICKPAY.opt.personalOn"), t("QUICKPAY.opt.personalOnHint")),
+        toggle("opt.autoCreatePersonal", o.autoCreatePersonal, t("QUICKPAY.opt.autoCreate")),
+        toggle("opt.maskGmOnly", o.maskGmOnly, t("QUICKPAY.opt.maskGmOnly")),
       ) +
-      section("Containers", row("Who can mark a container public", select("opt.containerFlagging", o.containerFlagging, [["owner", "Its owner and the GM"], ["gm", "Only the GM"]])))
+      section(t("QUICKPAY.sec.containers"), row(t("QUICKPAY.opt.containerFlagging"), select("opt.containerFlagging", o.containerFlagging, [["owner", t("QUICKPAY.opt.flagOwner")], ["gm", t("QUICKPAY.creators.gm")]])))
     );
   },
 
@@ -140,37 +141,37 @@ const PANES = {
     const denoms = getDenominations({ hidden: [] });
     const hidden = game.settings.get(MODULE_ID, "hiddenDenominations")?.list ?? [];
     return (
-      note("Hidden coins are ignored completely for everyone: never spent, never given as change, and never offered in the Send window.") +
-      section("Hidden coins", coinChecks("hide", hidden, denoms, (d) => `${d.label ?? d.key} (${d.abbreviation ?? d.key})`))
+      note(t("QUICKPAY.note.hiddenCoins")) +
+      section(t("QUICKPAY.sec.hiddenCoins"), coinChecks("hide", hidden, denoms, (d) => `${d.label ?? d.key} (${d.abbreviation ?? d.key})`))
     );
   },
 
   characters() {
     const pcs = playerCharacters();
     return (
-      note("Player characters only.") +
+      note(t("QUICKPAY.note.pcsOnly")) +
       (pcs.length
-        ? `<table class="quickpay-table"><thead><tr><th>Character</th><th>Must accept coins</th><th>Personal ledger</th></tr></thead><tbody>` +
+        ? `<table class="quickpay-table"><thead><tr><th>${esc(t("QUICKPAY.col.character"))}</th><th>${esc(t("QUICKPAY.col.mustAccept"))}</th><th>${esc(t("QUICKPAY.col.personalLedger"))}</th></tr></thead><tbody>` +
           pcs
             .map(
               (a) =>
-                `<tr><td>${esc(a.name)}</td><td>${select(`acc.${a.id}`, triValue(a.getFlag(MODULE_ID, FLAGS.requiresAcceptance)), TRI)}</td><td>${select(`pl.${a.id}`, triValue(a.getFlag(MODULE_ID, "personalLedger")), TRI)}</td></tr>`,
+                `<tr><td>${esc(a.name)}</td><td>${select(`acc.${a.id}`, triValue(a.getFlag(MODULE_ID, FLAGS.requiresAcceptance)), TRI())}</td><td>${select(`pl.${a.id}`, triValue(a.getFlag(MODULE_ID, "personalLedger")), TRI())}</td></tr>`,
             )
             .join("") +
           `</tbody></table>`
-        : note("No player characters found."))
+        : note(t("QUICKPAY.note.noPcs")))
     );
   },
 };
 
 /** The panes that appear as buttons on the module's settings page. */
 export const PANE_LIST = [
-  { key: "me", title: "My preferences", label: "My preferences", icon: "fa-solid fa-user", gmOnly: false, hint: "Your default visibility and ledger, confirmations, notices, and coins you never want used." },
-  { key: "permissions", title: "Permissions", label: "Permissions", icon: "fa-solid fa-shield-halved", gmOnly: true, hint: "Who players may pay, and which payments need GM approval." },
-  { key: "transfers", title: "Transfers and limits", label: "Transfers and limits", icon: "fa-solid fa-right-left", gmOnly: true, hint: "Acceptance, expiry, chat, confirmations, and limits." },
-  { key: "ledgers", title: "Ledgers", label: "Ledgers", icon: "fa-solid fa-book", gmOnly: true, hint: "Who can create ledgers, personal ledgers, and who can make containers public." },
-  { key: "coins", title: "Coins", label: "Coins", icon: "fa-solid fa-coins", gmOnly: true, hint: "Hide denominations for everyone." },
-  { key: "characters", title: "Characters", label: "Characters", icon: "fa-solid fa-users", gmOnly: true, hint: "Per character: must they accept coins, and do they get a personal ledger." },
+  { key: "me", titleKey: "QUICKPAY.pane.me", hintKey: "QUICKPAY.pane.meHint", icon: "fa-solid fa-user", gmOnly: false },
+  { key: "permissions", titleKey: "QUICKPAY.pane.permissions", hintKey: "QUICKPAY.pane.permissionsHint", icon: "fa-solid fa-shield-halved", gmOnly: true },
+  { key: "transfers", titleKey: "QUICKPAY.pane.transfers", hintKey: "QUICKPAY.pane.transfersHint", icon: "fa-solid fa-right-left", gmOnly: true },
+  { key: "ledgers", titleKey: "QUICKPAY.pane.ledgers", hintKey: "QUICKPAY.pane.ledgersHint", icon: "fa-solid fa-book", gmOnly: true },
+  { key: "coins", titleKey: "QUICKPAY.pane.coins", hintKey: "QUICKPAY.pane.coinsHint", icon: "fa-solid fa-coins", gmOnly: true },
+  { key: "characters", titleKey: "QUICKPAY.pane.characters", hintKey: "QUICKPAY.pane.charactersHint", icon: "fa-solid fa-users", gmOnly: true },
 ];
 
 /** One window for one pane. Saving writes only the fields that are on its page. */
@@ -179,12 +180,13 @@ class PaneApp extends Base {
   static DEFAULT_OPTIONS = {
     classes: ["dnd-quickpay", "quickpay-options"],
     tag: "div",
-    window: { title: "DND QuickPay", icon: "fa-solid fa-coins quickpay-gold", resizable: true },
+    window: { title: "QUICKPAY.title", icon: "fa-solid fa-coins quickpay-gold", resizable: true },
     position: { width: 540, height: "auto" },
   };
 
   get title() {
-    return `DND QuickPay: ${PANE_LIST.find((p) => p.key === this.constructor.PANE)?.title ?? ""}`;
+    const meta = PANE_LIST.find((p) => p.key === this.constructor.PANE);
+    return t("QUICKPAY.opt.paneTitle", { pane: meta ? t(meta.titleKey) : "" });
   }
 
   async _renderHTML() {
@@ -195,12 +197,12 @@ class PaneApp extends Base {
     const key = this.constructor.PANE;
     const meta = PANE_LIST.find((p) => p.key === key);
     if (meta?.gmOnly && !game.user.isGM) {
-      content.innerHTML = `<div class="quickpay-pane"><p>Only the GM can change these.</p></div>`;
+      content.innerHTML = `<div class="quickpay-pane"><p>${esc(t("QUICKPAY.note.gmOnly"))}</p></div>`;
       return;
     }
     content.innerHTML =
       `<div class="quickpay-pane">${PANES[key]()}` +
-      `<div class="quickpay-buttons"><button type="button" data-qp="save">Save</button><button type="button" data-qp="close">Close</button></div></div>`;
+      `<div class="quickpay-buttons"><button type="button" data-qp="save">${esc(t("QUICKPAY.btn.save"))}</button><button type="button" data-qp="close">${esc(t("QUICKPAY.btn.close"))}</button></div></div>`;
     this._root = content;
     content.querySelector('[data-qp="close"]').addEventListener("click", () => this.close());
     content.querySelector('[data-qp="save"]').addEventListener("click", () => this._save());
@@ -245,11 +247,11 @@ class PaneApp extends Base {
           else await setPersonalEnabled(actor, flags.personal);
         }
       }
-      ui.notifications.info("DND QuickPay options saved.");
+      ui.notifications.info(t("QUICKPAY.opt.saved"));
       this.close();
     } catch (err) {
       console.error(`${MODULE_ID} | could not save options`, err);
-      ui.notifications.error("Couldn't save everything. Check the console.");
+      ui.notifications.error(t("QUICKPAY.opt.saveFailed"));
     }
   }
 }
@@ -272,7 +274,7 @@ export class OptionsHub extends Base {
     id: "dnd-quickpay-options-hub",
     classes: ["dnd-quickpay", "quickpay-options"],
     tag: "div",
-    window: { title: "DND QuickPay options", icon: "fa-solid fa-coins quickpay-gold", resizable: false },
+    window: { title: "QUICKPAY.opt.hubTitle", icon: "fa-solid fa-coins quickpay-gold", resizable: false },
     position: { width: 360, height: "auto" },
   };
 
@@ -285,8 +287,8 @@ export class OptionsHub extends Base {
     const list = PANE_LIST.filter((p) => gm || !p.gmOnly);
     content.innerHTML =
       `<div class="quickpay-pane quickpay-hub">` +
-      list.map((p) => `<button type="button" data-pane="${esc(p.key)}"><i class="${esc(p.icon)} quickpay-gold"></i> ${esc(p.label)}</button>`).join("") +
-      `<button type="button" data-pane="containers"><i class="fa-solid fa-box-open quickpay-gold"></i> Public containers</button></div>`;
+      list.map((p) => `<button type="button" data-pane="${esc(p.key)}"><i class="${esc(p.icon)} quickpay-gold"></i> ${esc(t(p.titleKey))}</button>`).join("") +
+      `<button type="button" data-pane="containers"><i class="fa-solid fa-box-open quickpay-gold"></i> ${esc(t("QUICKPAY.menu.containers"))}</button></div>`;
     content.querySelectorAll("[data-pane]").forEach((btn) =>
       btn.addEventListener("click", async () => {
         const key = btn.dataset.pane;

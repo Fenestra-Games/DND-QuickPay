@@ -9,6 +9,7 @@ import { formatAmount } from "./core/coins.mjs";
 import { worldOptions, playerOptions } from "./options-store.mjs";
 import { nameOfLedger, whenText } from "./ledger.mjs";
 import { callGM } from "./socket.mjs";
+import { t } from "./i18n.mjs";
 
 /**
  * Chat cards. Posting happens on the GM client that processed the transfer (that is the
@@ -108,7 +109,7 @@ function notifyArrival(message) {
   if (!playerOptions().notifyOnReceive) return;
   try {
     const doc = fromUuidSync(f.recipientUuid);
-    if (doc?.testUserPermission(game.user, "OWNER")) ui.notifications.info(`${doc.name} received ${f.amountText}.`);
+    if (doc?.testUserPermission(game.user, "OWNER")) ui.notifications.info(t("QUICKPAY.notice.received", { name: doc.name, amount: f.amountText }));
   } catch {
     /* not a document this client can resolve */
   }
@@ -129,7 +130,7 @@ function bindCard(message, html) {
       root.querySelectorAll("button[data-quickpay-action]").forEach((b) => (b.disabled = true));
       const res = await callGM(action, id);
       if (!res?.ok) {
-        if (!res?.offline) ui.notifications.warn(res?.error ?? "That didn't work.");
+        if (!res?.offline) ui.notifications.warn(res?.error ?? t("QUICKPAY.err.didntWork"));
         root.querySelectorAll("button[data-quickpay-action]").forEach((b) => (b.disabled = false));
       }
     });

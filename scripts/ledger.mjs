@@ -2,6 +2,7 @@ import { MODULE_ID } from "./constants.mjs";
 import { worldOptions } from "./options-store.mjs";
 import { getDenominations } from "./adapters/dnd5e.mjs";
 import { entryFromRecord, personalEntryFromRecord, tableHTML } from "./core/ledger-format.mjs";
+import { t } from "./i18n.mjs";
 
 /**
  * Journal-backed ledgers. Everything here runs on the GM's client (the engine calls it),
@@ -27,7 +28,7 @@ export function whenText(seconds) {
   } catch {
     /* fall through */
   }
-  return `Day ${Math.floor(seconds / 86400) + 1}`;
+  return t("QUICKPAY.day", { n: Math.floor(seconds / 86400) + 1 });
 }
 
 // ---- permissions ---------------------------------------------------------------
@@ -70,7 +71,7 @@ async function makeJournal({ kind, name, ownership, extra = {} }) {
     name,
     folder: await folderFor(kind),
     ownership,
-    pages: [{ name: "Ledger", type: "text", text: { content: tableHTML([], denoms(), { personal: kind === "personal" }), format: 1 } }],
+    pages: [{ name: t("QUICKPAY.ledger.pageName"), type: "text", text: { content: tableHTML([], denoms(), { personal: kind === "personal" }), format: 1 } }],
     flags: { [MODULE_ID]: { [FLAG]: data } },
   });
   return journal;
@@ -84,7 +85,7 @@ async function writeEntries(journal, entries) {
   const page = journal.pages.contents[0];
   const html = tableHTML(trimmed, denoms(), { personal: data.kind === "personal" });
   if (page) await page.update({ "text.content": html });
-  else await journal.createEmbeddedDocuments("JournalEntryPage", [{ name: "Ledger", type: "text", text: { content: html, format: 1 } }]);
+  else await journal.createEmbeddedDocuments("JournalEntryPage", [{ name: t("QUICKPAY.ledger.pageName"), type: "text", text: { content: html, format: 1 } }]);
 }
 
 function upsert(entries, entry) {
@@ -166,7 +167,7 @@ async function personalJournal(actor) {
   }
   const journal = await makeJournal({
     kind: "personal",
-    name: `${actor.name} (QuickPay ledger)`,
+    name: t("QUICKPAY.ledger.personalName", { name: actor.name }),
     ownership,
     extra: { actorUuid: actor.uuid },
   });

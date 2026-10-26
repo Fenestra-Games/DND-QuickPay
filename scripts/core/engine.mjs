@@ -29,6 +29,7 @@
  */
 
 import { planPayment, normalizeAmount, applyDelta, invertDelta } from "./coins.mjs";
+import { t } from "../i18n.mjs";
 import {
   DEFAULT_OPTIONS, DEFAULT_PERMISSIONS, mergeOptions, mergePermissions, classifyRecipient, decidePermission, limitUnits,
 } from "./options.mjs";
@@ -80,12 +81,12 @@ export function createEngine(deps) {
   const cleanLedgerId = (v) => (typeof v === "string" && v ? v.slice(0, 64) : null);
 
   function sanitize(input) {
-    if (!input || typeof input !== "object") return { error: "Invalid request." };
+    if (!input || typeof input !== "object") return { error: t("QUICKPAY.err.invalidRequest") };
     const uuidOrNull = (v) => (v == null || v === "" ? null : typeof v === "string" ? v : undefined);
     const senderUuid = uuidOrNull(input.senderUuid);
     const recipientUuid = uuidOrNull(input.recipientUuid);
-    if (senderUuid === undefined || recipientUuid === undefined) return { error: "Invalid target." };
-    if (!senderUuid && !recipientUuid) return { error: "Choose a sender, a recipient, or both." };
+    if (senderUuid === undefined || recipientUuid === undefined) return { error: t("QUICKPAY.err.invalidTarget") };
+    if (!senderUuid && !recipientUuid) return { error: t("QUICKPAY.err.chooseSide") };
     return {
       senderUuid,
       recipientUuid,
@@ -161,30 +162,30 @@ export function createEngine(deps) {
 
   // ---- request -------------------------------------------------------------
   async function doRequest(userId, input, { dryRun = false, approvedBy = null } = {}) {
-    if (!docs.userExists(userId)) return no("Couldn't identify who made this request.");
+    if (!docs.userExists(userId)) return no(t("QUICKPAY.err.noIdentity"));
     const isGM = docs.isGM(userId);
 
     const clean = sanitize(input);
     if (clean.error) return no(clean.error);
 
     const sender = clean.senderUuid ? await docs.resolve(clean.senderUuid) : null;
-    if (clean.senderUuid && !sender) return no("The sender could not be found.");
+    if (clean.senderUuid && !sender) return no(t("QUICKPAY.err.senderMissing"));
     const recipient = clean.recipientUuid ? await docs.resolve(clean.recipientUuid) : null;
-    if (clean.recipientUuid && !recipient) return no("The recipient could not be found.");
+    if (clean.recipientUuid && !recipient) return no(t("QUICKPAY.err.recipientMissing"));
 
     for (const d of [sender, recipient]) {
-      if (d && !coins.holdsCurrency(d)) return no(`${docs.name(d)} can't hold coins.`);
+      if (d && !coins.holdsCurrency(d)) return no(t("QUICKPAY.err.cantHoldCoins", { name: docs.name(d) }));
     }
     if (sender && recipient && docs.uuid(sender) === docs.uuid(recipient)) {
-      return no("The sender and the recipient are the same.");
+      return no(t("QUICKPAY.err.sameParty"));
     }
 
     // The permission grid. GMs are never restricted; owning the sender is always required.
     let decision = "allow";
     if (!isGM) {
-      if (!sender) return no("Only a GM can create coins from nowhere.");
-      if (!recipient) return no("Only a GM can send coins to nowhere.");
-      if (!docs.userOwns(userId, sender)) return no(`You don't have permission over ${docs.name(sender)}.`);
+      if (!sender) return no(t("QUICKPAY.err.gmMint"));
+      if (!recipient) return no(t("QUICKPAY.err.gmBurn"));
+      if (!docs.userOwns(userId, sender)) return no(t("QUICKPAY.err.noPermissionOver", { name: docs.name(sender) }));
       const isContainer = docs.kind(recipient) === "container";
       const rule = classifyRecipient({
         recipientKind: isContainer ? "container" : "actor",
@@ -194,13 +195,13 @@ export function createEngine(deps) {
       });
       decision = decidePermission(getPerms(), rule);
       if (decision === "block") {
-        return no(isContainer ? `${docs.name(recipient)} isn't accepting coins.` : `You can't send coins to ${docs.name(recipient)}.`);
+        return no(isContainer ? t("QUICKPAY.err.containerNotAccepting", { name: docs.name(recipient) }) : t("QUICKPAY.err.cantSendTo", { name: docs.name(recipient) }));
       }
     }
 
     // A ledger tag must point at a ledger this user is allowed to use
     if (clean.ledgerId && !(await ledgers.canUse(userId, clean.ledgerId))) {
-      return no("You can't use that ledger, or it doesn't exist.");
+      return no(t("QUICKPAY.err.ledgerUnusable"));
     }
 
     // Work out the coins
@@ -221,20 +222,20 @@ export function createEngine(deps) {
 
     if (!isGM) {
       const limit = limitUnits(opts.maxPerTransferGp, d);
-      if (limit && toCost(receive, d) > limit) return no(`That's over the limit of ${opts.maxPerTransferGp} gp per transfer.`);
+      if (limit && toCost(receive, d) > limit) return no(t("QUICKPAY.err.overLimit", { limit: opts.maxPerTransferGp }));
     }
     const needsApproval = decision === "approval" && !approvedBy;
     if (dryRun) return ok({ dryRun: true, needsApproval, cost: sender ? toCost(receive, d) : 0 });
 
     const pending = needsAcceptance(userId, recipient);
-    const t = now();
+    const stamp = now();
     const record = {
       version: RECORD_VERSION,
       id: newId(),
       status: STATUS.PENDING,
-      createdAt: t,
+      createdAt: stamp,
       createdReal: Date.now(),
-      expiresAt: pending ? t + settings.expiryHours() * 3600 : null,
+      expiresAt: pending ? stamp + settings.expiryHours() * 3600 : null,
       initiatedBy: userId,
       initiatedByName: docs.userName(userId),
       sender: ref(sender),
@@ -255,7 +256,7 @@ export function createEngine(deps) {
     if (needsApproval) {
       record.status = STATUS.APPROVAL;
       record.escrow = {};
-      record.expiresAt = t + settings.expiryHours() * 3600;
+      record.expiresAt = stamp + settings.expiryHours() * 3600;
       record.request = {
         senderUuid: clean.senderUuid,
         recipientUuid: clean.recipientUuid,
@@ -270,7 +271,7 @@ export function createEngine(deps) {
         await store.savePending(pend);
       } catch (err) {
         console.error("dnd-quickpay | could not save approval request", err);
-        return no("Couldn't record the request.");
+        return no(t("QUICKPAY.err.recordRequest"));
       }
       emit("transferApproval", record);
       return ok({ status: STATUS.APPROVAL, record });
@@ -278,7 +279,7 @@ export function createEngine(deps) {
 
     // 1. Escrow: take the coins from the sender
     if (sender && !(await coins.commit(sender, escrow))) {
-      return no("The sender's coins changed before the transfer could go through. Try again.");
+      return no(t("QUICKPAY.err.coinsChanged"));
     }
 
     // 2a. Needs the recipient's say: park it
@@ -290,7 +291,7 @@ export function createEngine(deps) {
       } catch (err) {
         console.error("dnd-quickpay | could not save pending transfer", err);
         await refundSender(record);
-        return no("Couldn't record the pending transfer, so nothing was taken.");
+        return no(t("QUICKPAY.err.recordPending"));
       }
       emit("transferPending", record);
       return ok({ status: STATUS.PENDING, record });
@@ -299,7 +300,7 @@ export function createEngine(deps) {
     // 2b. Straight through: credit the recipient (a burn has none)
     if (recipient && !(await coins.commit(recipient, receive))) {
       const refunded = await refundSender(record);
-      return no("The recipient couldn't receive the coins, so the transfer was undone.", { refunded });
+      return no(t("QUICKPAY.err.recipientFailed"), { refunded });
     }
     await finish(record, STATUS.COMPLETED, recipient ? "auto" : "removed", userId, { refunded: null });
     return ok({ status: STATUS.COMPLETED, record });
@@ -315,19 +316,19 @@ export function createEngine(deps) {
    * unexpected fails midway, it stops there and reports what already went through.
    */
   async function doRequestMany(userId, input, recipientUuids) {
-    if (!input || typeof input !== "object") return no("Invalid request.");
-    if (!Array.isArray(recipientUuids) || !recipientUuids.length) return no("Choose at least one recipient.");
+    if (!input || typeof input !== "object") return no(t("QUICKPAY.err.invalidRequest"));
+    if (!Array.isArray(recipientUuids) || !recipientUuids.length) return no(t("QUICKPAY.err.chooseRecipient"));
     const list = [...new Set(recipientUuids.map((u) => (u == null || u === "" ? null : u)))];
     const most = Math.min(MANY_MAX, getOptions().maxRecipients);
-    if (list.length > most) return no(`You can send to at most ${most} recipients at once.`);
-    if (list.some((u) => u !== null && typeof u !== "string")) return no("Invalid target.");
+    if (list.length > most) return no(t("QUICKPAY.err.tooManyRecipients", { max: most }));
+    if (list.some((u) => u !== null && typeof u !== "string")) return no(t("QUICKPAY.err.invalidTarget"));
 
     const base = { ...input };
     for (const u of list) {
       const check = await doRequest(userId, { ...base, recipientUuid: u }, { dryRun: true });
       if (!check.ok) {
         const who = u ? (await docs.resolve(u)) : null;
-        return no(who ? `${docs.name(who)}: ${check.error}` : check.error);
+        return no(who ? t("QUICKPAY.err.recipientPrefixed", { name: docs.name(who), error: check.error }) : check.error);
       }
     }
     // the whole total, not just each share
@@ -338,7 +339,7 @@ export function createEngine(deps) {
       if (sender && norm.ok) {
         const scaled = Object.fromEntries(Object.entries(norm.receive).map(([k, n]) => [k, n * list.length]));
         const plan = planPayment(coins.getBalance(sender), scaled, d);
-        if (!plan.ok) return no(`Not enough coin to send that to ${list.length} people.`);
+        if (!plan.ok) return no(t("QUICKPAY.err.notEnoughForMany", { count: list.length }));
       }
     }
 
@@ -350,7 +351,7 @@ export function createEngine(deps) {
     }
     const done = results.filter((r) => r.ok).length;
     if (done < list.length) {
-      return no(`Only ${done} of ${list.length} went through: ${results.at(-1).error}`, { results, done, total: list.length });
+      return no(t("QUICKPAY.err.partialBatch", { done, count: list.length, error: results.at(-1).error }), { results, done, total: list.length });
     }
     return ok({ results, done, total: list.length });
   }
@@ -364,22 +365,22 @@ export function createEngine(deps) {
 
   async function doAccept(userId, id) {
     const record = await getPending(id);
-    if (!record) return no("That transfer is no longer pending.");
+    if (!record) return no(t("QUICKPAY.err.notPending"));
     const isGM = docs.isGM(userId);
 
     const recipient = record.recipient ? await docs.resolve(record.recipient.uuid) : null;
     if (!recipient) {
       await closeWithRefund(record, STATUS.CANCELLED, "recipient-missing", userId);
-      return no("The recipient no longer exists. The coins went back to the sender.");
+      return no(t("QUICKPAY.err.recipientGone"));
     }
-    if (!isGM && !docs.userOwns(userId, recipient)) return no("Only the recipient or a GM can accept this.");
+    if (!isGM && !docs.userOwns(userId, recipient)) return no(t("QUICKPAY.err.onlyRecipientAccept"));
 
     if (record.expiresAt != null && now() >= record.expiresAt) {
       await closeWithRefund(record, STATUS.EXPIRED, "expired", userId);
-      return no("That transfer expired. The coins went back to the sender.");
+      return no(t("QUICKPAY.err.expired"));
     }
     if (!(await coins.commit(recipient, record.amount))) {
-      return no("Couldn't add the coins to the recipient. The transfer is still pending.");
+      return no(t("QUICKPAY.err.addFailed"));
     }
     await finish(record, STATUS.COMPLETED, isGM ? "accepted-by-gm" : "accepted", userId, { refunded: null });
     return ok({ status: STATUS.COMPLETED, record });
@@ -387,11 +388,11 @@ export function createEngine(deps) {
 
   async function doDecline(userId, id) {
     const record = await getPending(id);
-    if (!record) return no("That transfer is no longer pending.");
+    if (!record) return no(t("QUICKPAY.err.notPending"));
     const isGM = docs.isGM(userId);
     const recipient = record.recipient ? await docs.resolve(record.recipient.uuid) : null;
     if (!isGM && !(recipient && docs.userOwns(userId, recipient))) {
-      return no("Only the recipient or a GM can decline this.");
+      return no(t("QUICKPAY.err.onlyRecipientDecline"));
     }
     const refunded = await closeWithRefund(record, STATUS.DECLINED, isGM ? "declined-by-gm" : "declined", userId);
     return ok({ status: STATUS.DECLINED, record, refunded });
@@ -405,14 +406,14 @@ export function createEngine(deps) {
   }
 
   async function doApprove(userId, id) {
-    if (!docs.isGM(userId)) return no("Only a GM can approve this.");
+    if (!docs.isGM(userId)) return no(t("QUICKPAY.err.onlyGmApprove"));
     const pend = await store.loadPending();
     const record = pend[id];
-    if (!record || record.status !== STATUS.APPROVAL) return no("That request is no longer waiting for approval.");
+    if (!record || record.status !== STATUS.APPROVAL) return no(t("QUICKPAY.err.notAwaitingApproval"));
     const res = await doRequest(record.initiatedBy, record.request, { approvedBy: userId });
     if (!res.ok) {
       await finish(record, STATUS.CANCELLED, "approval-failed", userId, { refunded: null });
-      return no(`It couldn't go ahead: ${res.error}`);
+      return no(t("QUICKPAY.err.couldntGoAhead", { error: res.error }));
     }
     const after = await store.loadPending();
     delete after[id];
@@ -422,39 +423,39 @@ export function createEngine(deps) {
   }
 
   async function doDeny(userId, id) {
-    if (!docs.isGM(userId)) return no("Only a GM can deny this.");
+    if (!docs.isGM(userId)) return no(t("QUICKPAY.err.onlyGmDeny"));
     const pend = await store.loadPending();
     const record = pend[id];
-    if (!record || record.status !== STATUS.APPROVAL) return no("That request is no longer waiting for approval.");
+    if (!record || record.status !== STATUS.APPROVAL) return no(t("QUICKPAY.err.notAwaitingApproval"));
     await finish(record, STATUS.DENIED, "denied-by-gm", userId, { refunded: null });
     return ok({ status: STATUS.DENIED, record });
   }
 
   async function doCancel(userId, id) {
     const record = await getOpen(id);
-    if (!record) return no("That transfer is no longer pending.");
+    if (!record) return no(t("QUICKPAY.err.notPending"));
     if (record.status === STATUS.APPROVAL) {
       const gm = docs.isGM(userId);
       const own = record.sender ? await docs.resolve(record.sender.uuid) : null;
-      if (!gm && !(own && docs.userOwns(userId, own))) return no("Only the sender or a GM can cancel this.");
+      if (!gm && !(own && docs.userOwns(userId, own))) return no(t("QUICKPAY.err.onlySenderCancel"));
       await finish(record, STATUS.CANCELLED, gm ? "cancelled-by-gm" : "cancelled", userId, { refunded: null });
       return ok({ status: STATUS.CANCELLED, record });
     }
     const isGM = docs.isGM(userId);
     const sender = record.sender ? await docs.resolve(record.sender.uuid) : null;
     if (!isGM && !(sender && docs.userOwns(userId, sender))) {
-      return no("Only the sender or a GM can cancel this.");
+      return no(t("QUICKPAY.err.onlySenderCancel"));
     }
     const refunded = await closeWithRefund(record, STATUS.CANCELLED, isGM ? "cancelled-by-gm" : "cancelled", userId);
     return ok({ status: STATUS.CANCELLED, record, refunded });
   }
 
   async function doExpireDue() {
-    const t = now();
+    const nowSeconds = now();
     const pend = await store.loadPending();
     let count = 0;
     for (const record of Object.values(pend)) {
-      if (record.expiresAt == null || t < record.expiresAt) continue;
+      if (record.expiresAt == null || nowSeconds < record.expiresAt) continue;
       if (record.status === STATUS.PENDING) {
         await closeWithRefund(record, STATUS.EXPIRED, "expired", null);
         count++;
@@ -480,30 +481,30 @@ export function createEngine(deps) {
   }
 
   async function doAmend(userId, id, patch) {
-    if (!docs.userExists(userId)) return no("Couldn't identify who made this request.");
-    if (typeof id !== "string" || !patch || typeof patch !== "object") return no("Invalid request.");
+    if (!docs.userExists(userId)) return no(t("QUICKPAY.err.noIdentity"));
+    if (typeof id !== "string" || !patch || typeof patch !== "object") return no(t("QUICKPAY.err.invalidRequest"));
 
     const pend = await store.loadPending();
     const wasPending = id in pend;
     const before = wasPending ? structuredClone(pend[id]) : await store.findLog(id);
-    if (!before) return no("That transfer couldn't be found.");
-    if (!(await canAmend(userId, before))) return no("You can't change that transfer.");
+    if (!before) return no(t("QUICKPAY.err.transferMissing"));
+    if (!(await canAmend(userId, before))) return no(t("QUICKPAY.err.cantChange"));
 
     const next = {};
     if ("ledgerId" in patch) {
       const ledgerId = patch.ledgerId == null || patch.ledgerId === "" ? null : cleanLedgerId(patch.ledgerId);
-      if (patch.ledgerId != null && patch.ledgerId !== "" && !ledgerId) return no("Invalid ledger.");
+      if (patch.ledgerId != null && patch.ledgerId !== "" && !ledgerId) return no(t("QUICKPAY.err.invalidLedger"));
       if (ledgerId && !(await ledgers.canUse(userId, ledgerId))) {
-        return no("You can't use that ledger, or it doesn't exist.");
+        return no(t("QUICKPAY.err.ledgerUnusable"));
       }
       if (ledgerId !== before.ledgerId) next.ledgerId = ledgerId;
     }
     if ("note" in patch) {
-      if (typeof patch.note !== "string") return no("Invalid note.");
+      if (typeof patch.note !== "string") return no(t("QUICKPAY.err.invalidNote"));
       const note = cleanNote(patch.note);
       if (note !== before.note) next.note = note;
     }
-    if (!Object.keys(next).length) return no("Nothing to change.");
+    if (!Object.keys(next).length) return no(t("QUICKPAY.err.nothingToChange"));
 
     let after;
     if (wasPending) {
@@ -512,7 +513,7 @@ export function createEngine(deps) {
       after = structuredClone(pend[id]);
     } else {
       after = await store.updateLog(id, next);
-      if (!after) return no("That transfer couldn't be updated.");
+      if (!after) return no(t("QUICKPAY.err.updateFailed"));
     }
 
     let ledgerWarning = null;
@@ -521,7 +522,7 @@ export function createEngine(deps) {
         await ledgers.reconcile(before, after);
       } catch (err) {
         console.error("dnd-quickpay | could not update the ledger", err);
-        ledgerWarning = "The transfer was updated, but the ledger couldn't be.";
+        ledgerWarning = t("QUICKPAY.err.ledgerNotUpdated");
       }
     }
     if (!wasPending && personal && before.note !== after.note) {
@@ -537,10 +538,10 @@ export function createEngine(deps) {
 
   // ---- ledgers -------------------------------------------------------------
   async function doCreateLedger(userId, name, options) {
-    if (!docs.userExists(userId)) return no("Couldn't identify who made this request.");
-    if (!ledgers.canCreate(userId)) return no("You don't have permission to create ledgers.");
+    if (!docs.userExists(userId)) return no(t("QUICKPAY.err.noIdentity"));
+    if (!ledgers.canCreate(userId)) return no(t("QUICKPAY.err.noCreateLedger"));
     const clean = typeof name === "string" ? name.trim().slice(0, LEDGER_NAME_MAX) : "";
-    if (!clean) return no("A ledger needs a name.");
+    if (!clean) return no(t("QUICKPAY.err.ledgerNeedsName"));
     const opts = options && typeof options === "object" ? options : {};
     const visibleToAll = opts.visibleToAll === undefined ? getOptions().ledgerDefaultReaders === "all" : opts.visibleToAll === true;
     const made = await ledgers.create(clean, userId, { visibleToAll });

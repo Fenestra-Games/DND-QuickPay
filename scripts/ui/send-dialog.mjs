@@ -11,6 +11,7 @@ import { callGM } from "../socket.mjs";
 import { canCreate, listLedgers } from "../ledger.mjs";
 import { buildTargets, NOWHERE } from "./targets.mjs";
 import { pickTokens } from "./pick.mjs";
+import { t } from "../i18n.mjs";
 
 const { ApplicationV2 } = foundry.applications.api;
 const NEW_LEDGER = "__new__";
@@ -24,7 +25,7 @@ export class SendDialog extends ApplicationV2 {
     id: "dnd-quickpay-send",
     classes: ["dnd-quickpay", "quickpay-send"],
     tag: "div",
-    window: { title: "QuickPay", icon: "fa-solid fa-coins quickpay-gold", resizable: false },
+    window: { title: "QUICKPAY.send.windowTitle", icon: "fa-solid fa-coins quickpay-gold", resizable: false },
     position: { width: 440, height: "auto" },
   };
 
@@ -39,7 +40,7 @@ export class SendDialog extends ApplicationV2 {
   }
 
   get title() {
-    return this.mode === "receive" ? `Receive coins: ${this.actor.name}` : `Send coins: ${this.actor.name}`;
+    return t(this.mode === "receive" ? "QUICKPAY.send.titleReceive" : "QUICKPAY.send.titleSend", { name: this.actor.name });
   }
 
   get hidden() {
@@ -65,7 +66,7 @@ export class SendDialog extends ApplicationV2 {
     const denoms = getDenominations({ hidden: this.hidden });
     const receive = this.mode === "receive";
     const targets = buildTargets(game.user, this.actor.uuid, {
-      nowhereLabel: game.user.isGM ? (receive ? "Nowhere (create new coins)" : "Nowhere (remove coins from play)") : null,
+      nowhereLabel: game.user.isGM ? t(receive ? "QUICKPAY.send.nowhereCreate" : "QUICKPAY.send.nowhereRemove") : null,
     });
     this._names = new Map(targets.flatMap((g) => g.items.map((i) => [i.uuid, i.name])));
     const addOptions = targets
@@ -73,25 +74,25 @@ export class SendDialog extends ApplicationV2 {
       .join("");
     const ledgers = listLedgers();
     const ledgerOptions =
-      `<option value="">No ledger</option>` +
+      `<option value="">${esc(t("QUICKPAY.send.noLedger"))}</option>` +
       ledgers.map((l) => `<option value="${esc(l.id)}">${esc(l.name)}</option>`).join("") +
-      (canCreate(game.user.id) ? `<option value="${NEW_LEDGER}">New ledger...</option>` : "");
+      (canCreate(game.user.id) ? `<option value="${NEW_LEDGER}">${esc(t("QUICKPAY.send.newLedger"))}</option>` : "");
 
     content.innerHTML =
       `<div class="quickpay-form">` +
       `<p class="quickpay-balance"></p>` +
-      `<div class="quickpay-who"><span class="quickpay-who-label">${receive ? "From" : "To"}</span>` +
-      `<select name="add"><option value="">${receive ? "Choose a source..." : "Add a recipient..."}</option>${addOptions}</select>` +
-      `<button type="button" class="quickpay-pick" data-qp="pick" title="Pick on the scene" aria-label="Pick on the scene"><i class="fa-solid fa-crosshairs quickpay-gold"></i></button></div>` +
+      `<div class="quickpay-who"><span class="quickpay-who-label">${esc(t(receive ? "QUICKPAY.send.from" : "QUICKPAY.send.to"))}</span>` +
+      `<select name="add"><option value="">${esc(t(receive ? "QUICKPAY.send.chooseSource" : "QUICKPAY.send.addRecipient"))}</option>${addOptions}</select>` +
+      `<button type="button" class="quickpay-pick" data-qp="pick" title="${esc(t("QUICKPAY.send.pick"))}" aria-label="${esc(t("QUICKPAY.send.pick"))}"><i class="fa-solid fa-crosshairs quickpay-gold"></i></button></div>` +
       `<div class="quickpay-chips"></div>` +
       `<div class="quickpay-amounts">${denoms.map((d) => `<label>${esc(d.abbreviation ?? d.key)} <input type="number" name="amt-${esc(d.key)}" min="0" step="1" inputmode="numeric" placeholder=""></label>`).join("")}</div>` +
-      `<label>Note <input type="text" name="note" maxlength="500"></label>` +
-      `<label>Who sees it <select name="visibility">` +
-      `<option value="public">Everyone</option><option value="gm-recipient">GM and recipient</option><option value="gm">GM only</option></select></label>` +
-      `<label>Ledger <select name="ledger">${ledgerOptions}</select></label>` +
-      `<label class="quickpay-newledger" hidden>New ledger name <input type="text" name="newLedger" maxlength="60"></label>` +
+      `<label>${esc(t("QUICKPAY.send.note"))} <input type="text" name="note" maxlength="500"></label>` +
+      `<label>${esc(t("QUICKPAY.send.whoSees"))} <select name="visibility">` +
+      `<option value="public">${esc(t("QUICKPAY.vis.public"))}</option><option value="gm-recipient">${esc(t("QUICKPAY.vis.gmRecipient"))}</option><option value="gm">${esc(t("QUICKPAY.vis.gm"))}</option></select></label>` +
+      `<label>${esc(t("QUICKPAY.send.ledger"))} <select name="ledger">${ledgerOptions}</select></label>` +
+      `<label class="quickpay-newledger" hidden>${esc(t("QUICKPAY.send.newLedgerName"))} <input type="text" name="newLedger" maxlength="60"></label>` +
       `<div class="quickpay-preview" aria-live="polite"></div>` +
-      `<div class="quickpay-buttons"><button type="button" data-qp="send">${receive ? "Receive" : "Send"}</button><button type="button" data-qp="cancel">Cancel</button></div>` +
+      `<div class="quickpay-buttons"><button type="button" data-qp="send">${esc(t(receive ? "QUICKPAY.send.receive" : "QUICKPAY.send.send"))}</button><button type="button" data-qp="cancel">${esc(t("QUICKPAY.btn.cancel"))}</button></div>` +
       `</div>`;
 
     this._content = content;
@@ -146,7 +147,7 @@ export class SendDialog extends ApplicationV2 {
   _refresh() {
     const chips = this._content.querySelector(".quickpay-chips");
     chips.innerHTML = this.selected
-      .map((s) => `<span class="quickpay-chip">${esc(s.name)}<button type="button" data-remove="${esc(s.uuid)}" aria-label="Remove ${esc(s.name)}">&times;</button></span>`)
+      .map((s) => `<span class="quickpay-chip">${esc(s.name)}<button type="button" data-remove="${esc(s.uuid)}" aria-label="${esc(t("QUICKPAY.send.remove", { name: s.name }))}">&times;</button></span>`)
       .join("");
     this._preview();
     this._fit();
@@ -154,7 +155,7 @@ export class SendDialog extends ApplicationV2 {
 
   async _pick() {
     if (this.picking || this.busy) return;
-    if (!canvas?.ready) return ui.notifications.warn("There is no scene to pick from.");
+    if (!canvas?.ready) return ui.notifications.warn(t("QUICKPAY.send.noScene"));
     this.picking = true;
     const allow = (t) =>
       !!t.actor && holdsCurrency(t.actor) && t.actor.uuid !== this.actor.uuid && (game.user.isGM || (t.visible && !t.document?.hidden));
@@ -194,7 +195,9 @@ export class SendDialog extends ApplicationV2 {
     const denoms = this._denoms;
     const payer = this._payer();
     c.querySelector(".quickpay-balance").textContent = payer
-      ? `${payer === this.actor ? "You hold" : `${payer.parent ? payer.parent.name + ": " : ""}${payer.name} holds`}: ${balanceText(getBalance(payer), denoms)}`
+      ? payer === this.actor
+        ? t("QUICKPAY.send.youHold", { amount: balanceText(getBalance(payer), denoms) })
+        : t("QUICKPAY.send.holds", { name: `${payer.parent ? payer.parent.name + ": " : ""}${payer.name}`, amount: balanceText(getBalance(payer), denoms) })
       : "";
     const out = c.querySelector(".quickpay-preview");
     const parsed = parseAmounts(this._raw());
@@ -225,10 +228,10 @@ export class SendDialog extends ApplicationV2 {
     const limit = limitUnits(worldOptions().confirmAboveGp, denoms);
     const large = limit != null && total > limit;
     if (!large && !playerOptions().confirmBeforeSend) return true;
-    const who = this.mode === "receive" ? this.actor.name : count === 1 ? this.selected[0].name : `${count} recipients`;
+    const who = this.mode === "receive" ? this.actor.name : count === 1 ? this.selected[0].name : t("QUICKPAY.send.nRecipients", { count });
     return foundry.applications.api.DialogV2.confirm({
-      window: { title: "Confirm" },
-      content: `<p>${this.mode === "receive" ? "Receive" : "Send"} <strong>${esc(formatAmount(amount, denoms))}</strong>${count > 1 ? " each" : ""} ${this.mode === "receive" ? "from" : "to"} <strong>${esc(who)}</strong>?</p>`,
+      window: { title: t("QUICKPAY.send.confirmTitle") },
+      content: `<p>${t(this.mode === "receive" ? (count > 1 ? "QUICKPAY.send.confirmReceiveEach" : "QUICKPAY.send.confirmReceive") : count > 1 ? "QUICKPAY.send.confirmSendEach" : "QUICKPAY.send.confirmSend", { amount: `<strong>${esc(formatAmount(amount, denoms))}</strong>`, who: `<strong>${esc(who)}</strong>` })}</p>`,
       rejectClose: false,
     });
   }
@@ -238,11 +241,11 @@ export class SendDialog extends ApplicationV2 {
     const c = this._content;
     const q = (sel) => c.querySelector(sel);
     if (!this.selected.length) {
-      return ui.notifications.warn(this.mode === "receive" ? "Choose where the coins come from." : "Choose who to send to.");
+      return ui.notifications.warn(t(this.mode === "receive" ? "QUICKPAY.send.needSource" : "QUICKPAY.send.needRecipient"));
     }
     const parsed = parseAmounts(this._raw());
     if (!parsed.ok) return ui.notifications.warn(parsed.error);
-    if (parsed.empty) return ui.notifications.warn("Enter an amount.");
+    if (parsed.empty) return ui.notifications.warn(t("QUICKPAY.send.enterAmount"));
 
     if (!(await this._confirm(parsed.amount, this.multi ? this.selected.length : 1))) return;
 
@@ -253,7 +256,7 @@ export class SendDialog extends ApplicationV2 {
       let ledgerId = q('[name="ledger"]').value || null;
       if (ledgerId === NEW_LEDGER) {
         const made = await callGM("createLedger", q('[name="newLedger"]').value, {});
-        if (!made?.ok) return ui.notifications.warn(made?.error ?? "Couldn't create that ledger.");
+        if (!made?.ok) return ui.notifications.warn(made?.error ?? t("QUICKPAY.send.ledgerFailed"));
         ledgerId = made.id;
       }
       const common = {
@@ -300,9 +303,9 @@ export async function openSend(actorOrUuid = null, mode = "send") {
   let actor = actorOrUuid;
   if (typeof actor === "string") actor = await fromUuid(actor);
   actor ??= canvas?.tokens?.controlled?.[0]?.actor ?? game.user.character ?? null;
-  if (actor?.documentName !== "Actor") return ui.notifications.warn("Select a token first, or pass an actor.");
+  if (actor?.documentName !== "Actor") return ui.notifications.warn(t("QUICKPAY.send.selectOrPass"));
   if (!game.user.isGM && !actor.testUserPermission(game.user, "OWNER")) {
-    return ui.notifications.warn("You can only send coins from an actor you own.");
+    return ui.notifications.warn(t("QUICKPAY.send.mustOwn"));
   }
   return new SendDialog(actor, { mode }).render({ force: true });
 }

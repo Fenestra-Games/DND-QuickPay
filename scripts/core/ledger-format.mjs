@@ -9,6 +9,14 @@
  */
 import { formatAmount, toUnits } from "./coins.mjs";
 import { esc } from "./format.mjs";
+import { t } from "../i18n.mjs";
+
+/** A status word for display. Unknown statuses show as they are. */
+const statusLabel = (status) => {
+  const key = `QUICKPAY.status.${status}`;
+  const text = t(key);
+  return text === key ? String(status ?? "") : text;
+};
 
 export const ENTRY_VERSION = 1;
 
@@ -69,19 +77,19 @@ export function personalEntryFromRecord(record, side, { when = "", ownerIds = []
 
 /** "Deposit", "Withdrawal", "Unknown deposit" or "Unknown withdrawal" (personal entries). */
 export function entryLabel(e) {
-  const base = e.direction === "in" ? "deposit" : "withdrawal";
-  const text = e.hidden && e.direction === "out" ? "Pickpocketed" : e.hidden ? `Unknown ${base}` : e.direction === "in" ? "Deposit" : "Withdrawal";
-  return text;
+  const incoming = e.direction === "in";
+  if (e.hidden) return t(!incoming ? "QUICKPAY.ledger.pickpocketed" : "QUICKPAY.ledger.unknownDeposit");
+  return t(incoming ? "QUICKPAY.ledger.deposit" : "QUICKPAY.ledger.withdrawal");
 }
 
 /** Who the other side was, in words. */
 export function counterpartyText(e) {
   if (e.hidden && e.direction === "out") {
-    return e.takenFrom ? `The GM has picked ${e.takenFrom}` : "The GM has picked your pocket";
+    return e.takenFrom ? t("QUICKPAY.ledger.pickedFrom", { name: e.takenFrom }) : t("QUICKPAY.ledger.pickedPocket");
   }
-  if (e.hidden) return "Unknown";
+  if (e.hidden) return t("QUICKPAY.ledger.unknown");
   if (e.counterparty) return e.counterparty;
-  return e.direction === "in" ? "The GM" : "Removed by the GM";
+  return e.direction === "in" ? t("QUICKPAY.card.theGm") : t("QUICKPAY.ledger.removedByGm");
 }
 
 // ---- amounts and totals --------------------------------------------------------
@@ -187,7 +195,7 @@ export function rowsHTML(entries, denoms) {
           `<td>${esc(entryLabel(e))}</td>` +
           `<td>${esc(counterpartyText(e))}</td>` +
           `<td>${esc(signedAmountText(e, denoms))}</td>` +
-          `<td>${esc(e.status)}</td>` +
+          `<td>${esc(statusLabel(e.status))}</td>` +
           `<td>${esc(e.note)}</td>` +
           `</tr>`
         );
@@ -195,10 +203,10 @@ export function rowsHTML(entries, denoms) {
       return (
         `<tr class="quickpay-row quickpay-${esc(e.status)}">` +
         `<td>${esc(e.when)}</td>` +
-        `<td>${esc(e.from ?? "(nowhere)")}</td>` +
-        `<td>${esc(e.to ?? "(removed)")}</td>` +
+        `<td>${esc(e.from ?? t("QUICKPAY.ledger.nowhereParen"))}</td>` +
+        `<td>${esc(e.to ?? t("QUICKPAY.ledger.removedParen"))}</td>` +
         `<td>${esc(amountText(e, denoms))}</td>` +
-        `<td>${esc(e.status)}</td>` +
+        `<td>${esc(statusLabel(e.status))}</td>` +
         `<td>${esc(e.note)}</td>` +
         `<td>${esc(e.by)}</td>` +
         `</tr>`
@@ -209,8 +217,8 @@ export function rowsHTML(entries, denoms) {
 
 export function headerHTML(personal) {
   return personal
-    ? `<tr><th>When</th><th>Type</th><th>Other side</th><th>Amount</th><th>Status</th><th>Note</th></tr>`
-    : `<tr><th>When</th><th>From</th><th>To</th><th>Amount</th><th>Status</th><th>Note</th><th>By</th></tr>`;
+    ? `<tr>${["when", "type", "otherSide", "amount", "status", "note"].map((k) => `<th>${esc(t(`QUICKPAY.ledger.col.${k}`))}</th>`).join("")}</tr>`
+    : `<tr>${["when", "from", "to", "amount", "status", "note", "by"].map((k) => `<th>${esc(t(`QUICKPAY.ledger.col.${k}`))}</th>`).join("")}</tr>`;
 }
 
 /**
@@ -222,14 +230,14 @@ export function tableHTML(entries, denoms, { limit = 300, personal = false } = {
   const rows = shown.slice(0, limit);
   const total = (entries ?? []).length;
   let note =
-    `<p class="quickpay-ledger-note">Showing ${rows.length} of ${shown.length} completed transfers` +
-    `${total > shown.length ? ` (${total - shown.length} other entries are in the viewer)` : ""}. ` +
-    `Open the ledger viewer to search and filter.</p>`;
+    `<p class="quickpay-ledger-note">${esc(t("QUICKPAY.ledger.showing", { shown: rows.length, total: shown.length }))}` +
+    `${total > shown.length ? ` (${esc(t("QUICKPAY.ledger.otherEntries", { count: total - shown.length }))})` : ""}. ` +
+    `${esc(t("QUICKPAY.ledger.openViewer"))}</p>`;
   if (personal && shown.length) {
-    const t = totals(entries, denoms);
-    note += `<p class="quickpay-totals">In: ${esc(t.inText)} &middot; Out: ${esc(t.outText)} &middot; Net: ${esc(t.netText)}</p>`;
+    const tot = totals(entries, denoms);
+    note += `<p class="quickpay-totals">${esc(t("QUICKPAY.ledger.totals", { in: tot.inText, out: tot.outText, net: tot.netText }))}</p>`;
   }
-  if (!rows.length) return `${note}<p><em>No transfers recorded yet.</em></p>`;
+  if (!rows.length) return `${note}<p><em>${esc(t("QUICKPAY.ledger.none"))}</em></p>`;
   return (
     `${note}<table class="quickpay-ledger-table"><thead>${headerHTML(personal)}</thead>` +
     `<tbody>${rowsHTML(rows, denoms)}</tbody></table>`

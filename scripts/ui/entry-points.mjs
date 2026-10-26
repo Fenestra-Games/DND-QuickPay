@@ -1,5 +1,6 @@
 import { holdsCurrency } from "../adapters/dnd5e.mjs";
 import { worldOptions } from "../options-store.mjs";
+import { t } from "../i18n.mjs";
 
 /** Can the current user open QuickPay for this actor? */
 const usableFor = (actor) =>
@@ -15,14 +16,14 @@ export function initEntryPoints() {
     if (!usableFor(actor) || controls.some((c) => c.action === "quickpay-send")) return;
     controls.push({
       icon: "fa-solid fa-coins quickpay-gold",
-      label: "Send coins",
+      label: t("QUICKPAY.menu.send"),
       action: "quickpay-send",
       onClick: () => send(actor, "send"),
     });
     if (game.user.isGM) {
       controls.push({
         icon: "fa-solid fa-hand-holding-dollar quickpay-gold",
-        label: "Receive coins",
+        label: t("QUICKPAY.menu.receive"),
         action: "quickpay-receive",
         onClick: () => send(actor, "receive"),
       });
@@ -31,20 +32,20 @@ export function initEntryPoints() {
     if (mayFlag && actor.items.contents.some((i) => i.type === "container")) {
       controls.push({
         icon: "fa-solid fa-box-open quickpay-gold",
-        label: "Public containers",
+        label: t("QUICKPAY.menu.containers"),
         action: "quickpay-containers",
         onClick: async () => (await import("./public-containers.mjs")).openPublicContainers(actor),
       });
     }
     controls.push({
       icon: "fa-solid fa-sliders quickpay-gold",
-      label: "QuickPay options",
+      label: t("QUICKPAY.menu.options"),
       action: "quickpay-options",
       onClick: async () => (await import("./options-app.mjs")).openOptions(),
     });
     controls.push({
       icon: "fa-solid fa-book quickpay-gold",
-      label: "Coin ledgers",
+      label: t("QUICKPAY.menu.ledgers"),
       action: "quickpay-ledgers",
       onClick: () => viewer(),
     });
@@ -70,7 +71,7 @@ export function initEntryPoints() {
       return b;
     };
     const col = root.querySelector(".col.left") ?? root;
-    col.append(make("send", "fa-solid fa-coins", "Send coins"));
-    if (game.user.isGM) col.append(make("receive", "fa-solid fa-hand-holding-dollar", "Receive coins"));
+    col.append(make("send", "fa-solid fa-coins", t("QUICKPAY.menu.send")));
+    if (game.user.isGM) col.append(make("receive", "fa-solid fa-hand-holding-dollar", t("QUICKPAY.menu.receive")));
   });
 }

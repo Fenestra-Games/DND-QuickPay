@@ -1,5 +1,6 @@
 import { MODULE_ID, FLAGS } from "../constants.mjs";
 import { holdsCurrency } from "../adapters/dnd5e.mjs";
+import { t } from "../i18n.mjs";
 
 export const NOWHERE = "__nowhere__";
 
@@ -35,32 +36,32 @@ export function buildTargets(user, excludeUuid, { nowhereLabel = null } = {}) {
   };
   const actorName = (a) => a.name;
 
-  if (user.isGM && nowhereLabel) groups.push({ label: "Nowhere", items: [{ uuid: NOWHERE, name: nowhereLabel }] });
+  if (user.isGM && nowhereLabel) groups.push({ label: t("QUICKPAY.target.nowhere"), items: [{ uuid: NOWHERE, name: nowhereLabel }] });
 
   const usable = (a) => a && holdsCurrency(a);
-  group("Targeted tokens", [...(game.user.targets ?? [])].map((t) => t.actor).filter(usable), actorName);
+  group(t("QUICKPAY.target.targeted"), [...(game.user.targets ?? [])].map((t) => t.actor).filter(usable), actorName);
 
   const onScene = (canvas?.tokens?.placeables ?? [])
     .filter((t) => user.isGM || (!t.document?.hidden && t.visible))
     .map((t) => t.actor)
     .filter(usable);
-  group("Tokens on this scene", onScene, actorName);
+  group(t("QUICKPAY.target.onScene"), onScene, actorName);
 
   const actors = game.actors.contents;
-  group("Player characters", actors.filter((a) => isPlayerCharacter(a)), actorName);
+  group(t("QUICKPAY.target.pcs"), actors.filter((a) => isPlayerCharacter(a)), actorName);
 
   const owned = actors.filter((a) => a.testUserPermission(user, "OWNER"));
-  group("Your containers", owned.flatMap(containersOf), containerName);
+  group(t("QUICKPAY.target.yourContainers"), owned.flatMap(containersOf), containerName);
 
   const publicContainers = [
     ...actors.flatMap(containersOf),
     ...game.items.contents.filter((i) => i.type === "container" && holdsCurrency(i)),
   ].filter((c) => c.getFlag(MODULE_ID, FLAGS.publicRecipient) === true);
-  group("Public containers", publicContainers, containerName);
+  group(t("QUICKPAY.menu.containers"), publicContainers, containerName);
 
   if (user.isGM) {
-    group("All actors", actors.filter(usable), actorName);
-    group("All containers", actors.flatMap(containersOf), containerName);
+    group(t("QUICKPAY.target.allActors"), actors.filter(usable), actorName);
+    group(t("QUICKPAY.target.allContainers"), actors.flatMap(containersOf), containerName);
   }
   return groups;
 }

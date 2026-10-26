@@ -1,3 +1,4 @@
+import { t } from "../i18n.mjs";
 /**
  * Pure coin maths. No Foundry globals, so it can be tested in Node.
  *
@@ -26,22 +27,22 @@ export function toUnits(amount, denoms) {
  */
 export function normalizeAmount(amount, denoms) {
   if (amount === null || typeof amount !== "object" || Array.isArray(amount)) {
-    return fail("Invalid amount.");
+    return fail(t("QUICKPAY.err.invalidAmount"));
   }
   const known = new Set(denoms.map((d) => d.key));
   const receive = {};
   for (const k of Object.keys(amount)) {
     const n = amount[k];
     if (n === 0) continue;
-    if (!known.has(k)) return fail(`The denomination "${k}" is not available.`);
+    if (!known.has(k)) return fail(t("QUICKPAY.err.denominationUnavailable", { coin: k }));
     if (typeof n !== "number" || !Number.isSafeInteger(n) || n < 0) {
-      return fail("Amounts must be whole, positive numbers.");
+      return fail(t("QUICKPAY.err.amountsWhole"));
     }
     receive[k] = n;
   }
   const cost = toUnits(receive, denoms);
-  if (!Number.isSafeInteger(cost)) return fail("That amount is too large.");
-  if (cost <= 0) return fail("The amount must be greater than zero.");
+  if (!Number.isSafeInteger(cost)) return fail(t("QUICKPAY.err.amountTooLarge"));
+  if (cost <= 0) return fail(t("QUICKPAY.err.amountZero"));
   return { ok: true, receive, cost };
 }
 
@@ -52,7 +53,7 @@ export function formatAmount(amount, denoms) {
     const n = amount[d.key] ?? 0;
     if (n) parts.push(`${n} ${d.abbreviation ?? d.key}`);
   }
-  return parts.join(", ") || "nothing";
+  return parts.join(", ") || t("QUICKPAY.nothing");
 }
 
 /** Flip a delta so it can be used to refund an escrowed payment. */
@@ -99,7 +100,7 @@ export function planPayment(balance, amount, denoms) {
 
   let held = 0;
   for (const d of denoms) held += bal[d.key] * d.value;
-  if (held < cost) return fail("Not enough coin to cover that amount.");
+  if (held < cost) return fail(t("QUICKPAY.err.notEnough"));
 
   const desc = [...denoms].sort((a, b) => b.value - a.value);
   const spend = Object.fromEntries(denoms.map((d) => [d.key, 0]));
@@ -134,7 +135,7 @@ export function planPayment(balance, amount, denoms) {
     remaining -= take * d.value;
     brokenValue = Math.max(brokenValue, d.value);
   }
-  if (remaining > 0) return fail("Not enough coin to cover that amount.");
+  if (remaining > 0) return fail(t("QUICKPAY.err.notEnough"));
 
   // Change for any overpay, avoiding noChange coins (electrum) unless nothing else works
   const over = -remaining;
@@ -152,7 +153,7 @@ export function planPayment(balance, amount, denoms) {
     };
     let res = makeChange(desc.filter((d) => !d.noChange));
     if (res.left > 0) res = makeChange(desc);
-    if (res.left > 0) return fail("Exact change can't be made with the available denominations.");
+    if (res.left > 0) return fail(t("QUICKPAY.err.noExactChange"));
     for (const [k, n] of Object.entries(res.out)) change[k] += n;
   }
 
