@@ -13,7 +13,7 @@ Send coins between players, GMs, actors, and containers in Foundry VTT, with esc
 - **Licence:** MIT
 - **Author:** Fenestra Games (support@fenestra.gripe). Made using Claude AI.
 
-Full documentation is in the [wiki](https://github.com/Thriceisalways/DND-QuickPay/wiki).
+Full documentation is in the [wiki](https://github.com/Fenestra-Games/DND-QuickPay/wiki).
 
 ## What it does
 
@@ -31,7 +31,7 @@ Full documentation is in the [wiki](https://github.com/Thriceisalways/DND-QuickP
 ## Install
 
 1. In Foundry, open **Add-on Modules, Install Module**.
-2. Paste this into **Manifest URL**: `https://github.com/Thriceisalways/DND-QuickPay/releases/latest/download/module.json`
+2. Paste this into **Manifest URL**: `https://github.com/Fenestra-Games/DND-QuickPay/releases/latest/download/module.json`
 3. Install **socketlib** as well.
 4. Enable both in your world.
 
@@ -52,15 +52,15 @@ Full documentation is in the [wiki](https://github.com/Thriceisalways/DND-QuickP
 
 | Page | What is in it |
 | --- | --- |
-| [Installation](https://github.com/Thriceisalways/DND-QuickPay/wiki/Installation) | Install, requirements, updating |
-| [Sending coins](https://github.com/Thriceisalways/DND-QuickPay/wiki/Sending-coins) | The Send dialog, targets, multiple recipients |
-| [Permissions and approvals](https://github.com/Thriceisalways/DND-QuickPay/wiki/Permissions-and-approvals) | What players may do, GM approval, limits |
-| [Ledgers](https://github.com/Thriceisalways/DND-QuickPay/wiki/Ledgers) | Business and personal ledgers, the viewer |
-| [Public containers](https://github.com/Thriceisalways/DND-QuickPay/wiki/Public-containers) | Letting players pay into a container |
-| [Options reference](https://github.com/Thriceisalways/DND-QuickPay/wiki/Options-reference) | Every setting |
-| [Macros and API](https://github.com/Thriceisalways/DND-QuickPay/wiki/Macros-and-API) | Console, macros, and hooks |
-| [Translating](https://github.com/Thriceisalways/DND-QuickPay/wiki/Translating) | Adding another language |
-| [FAQ and troubleshooting](https://github.com/Thriceisalways/DND-QuickPay/wiki/FAQ-and-troubleshooting) | Common problems |
+| [Installation](https://github.com/Fenestra-Games/DND-QuickPay/wiki/Installation) | Install, requirements, updating |
+| [Sending coins](https://github.com/Fenestra-Games/DND-QuickPay/wiki/Sending-coins) | The Send dialog, targets, multiple recipients |
+| [Permissions and approvals](https://github.com/Fenestra-Games/DND-QuickPay/wiki/Permissions-and-approvals) | What players may do, GM approval, limits |
+| [Ledgers](https://github.com/Fenestra-Games/DND-QuickPay/wiki/Ledgers) | Business and personal ledgers, the viewer |
+| [Public containers](https://github.com/Fenestra-Games/DND-QuickPay/wiki/Public-containers) | Letting players pay into a container |
+| [Options reference](https://github.com/Fenestra-Games/DND-QuickPay/wiki/Options-reference) | Every setting |
+| [Macros and API](https://github.com/Fenestra-Games/DND-QuickPay/wiki/Macros-and-API) | Console, macros, and hooks |
+| [Translating](https://github.com/Fenestra-Games/DND-QuickPay/wiki/Translating) | Adding another language |
+| [FAQ and troubleshooting](https://github.com/Fenestra-Games/DND-QuickPay/wiki/FAQ-and-troubleshooting) | Common problems |
 
 ## How a transfer works, briefly
 
@@ -80,14 +80,14 @@ Players can't edit other actors, so every transfer runs on the GM's client throu
 
 ## Reporting problems
 
-Open an issue at https://github.com/Thriceisalways/DND-QuickPay/issues, or email support@fenestra.gripe. Please include your Foundry version, the module version, and any red console errors.
+Open an issue at https://github.com/Fenestra-Games/DND-QuickPay/issues, or email support@fenestra.gripe. Please include your Foundry version, the module version, and any red console errors.
 
 > [!IMPORTANT]
 > **AMEND:** Decide whether you want a support Discord or a Ko-fi/Patreon link here.
 
 ## Translating
 
-Every piece of text lives in `lang/en.json`. To add a language, copy that file to `lang/<code>.json` (for example `lang/fr.json`), translate the values and leave the keys alone, then add an entry to `languages` in `module.json`. See the [wiki](https://github.com/Thriceisalways/DND-QuickPay/wiki/Translating).
+Every piece of text lives in `lang/en.json`. To add a language, copy that file to `lang/<code>.json` (for example `lang/fr.json`), translate the values and leave the keys alone, then add an entry to `languages` in `module.json`. See the [wiki](https://github.com/Fenestra-Games/DND-QuickPay/wiki/Translating).
 
 ## Development
 

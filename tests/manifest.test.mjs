@@ -50,7 +50,7 @@ t("license and readme are files that ship in the package", () => {
 t("download link names this version and every link uses the DND-QuickPay repo", () => {
   assert.ok(m.download.includes(`/v${m.version}/`), m.download);
   for (const key of ["url", "manifest", "download", "bugs", "changelog"]) {
-    assert.ok(m[key].startsWith("https://github.com/Thriceisalways/DND-QuickPay"), key);
+    assert.ok(m[key].startsWith("https://github.com/Fenestra-Games/DND-QuickPay"), key);
   }
 });
 t("the manifest link is the stable latest-release address", () => {
